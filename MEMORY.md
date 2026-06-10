@@ -7,7 +7,7 @@
 ## 项目概况
 - **目标**：云南高考志愿填报 AI 助手（移动优先 Web App）
 - **用户**：2026 云南考生及家长（主要理工类）
-- **部署**：Netlify（原 Vercel `*.vercel.app` 国内被墙，2026-06-10 迁移）
+- **部署**：Netlify `https://yunnan-gaokao.netlify.app`（2026-06-10 迁移，国内可直接访问）
 - **技术栈**：Next.js 14 + TypeScript + Tailwind CSS，内存静态数据，无数据库
 - **开发路径**：`e:\cc1\讨论贴\gaokao-ai\`
 
@@ -32,11 +32,9 @@
 - 部署平台从 Vercel → Netlify（`@netlify/plugin-nextjs` v5）
 
 ### ⚠️ 待解决
-- **域名**: 部署到 Netlify 后 `*.netlify.app` 国内同样被墙 → 仍需买自定义域名（阿里云/腾讯云 ~¥28/年），在 Netlify Domain 后台绑定
-- **Gemini API Key**: 用户需去 https://aistudio.google.com/apikey 获取免费 key，填入 Netlify 环境变量 `GEMINI_API_KEY`
 - **爱发电用户名**: 代码里 `your_username` 需替换为真实用户名（`result/page.tsx` + `layout.tsx` 各一处）
-- 无用户认证/支付系统
 - 2024 年数据缺失（Excel 源中没有 2024）
+- Gemini AI 已接通，prompt 已优化为六段式详细分析
 
 ---
 
@@ -145,14 +143,8 @@ HA7CH/gaokao-pro（~1k stars）、Royelau76/gaokao-decision-system-BK-（~100 st
 - `NEXT_TURBO=0` 已配置（避免 Turbopack OOM）
 - `typescript.ignoreBuildErrors: true`（数据文件大会导致 TS 编译 OOM）
 - 一分一段表从 TypeScript 内联移到 public/ JSON（避免编译期 OOM）
-- **Netlify `*.netlify.app` 域名同样国内被墙** → 需买自定义域名在 Netlify Domain 后台绑定
-- 自定义域名需在 DNS 添加 CNAME 记录指向 Netlify
-- AI 使用 Google Gemini 免费版（1500次/天），key 在 Netlify 后台设置
-
-### 从 Vercel 迁移到 Netlify 的原因
-- Vercel `*.vercel.app` 被墙，Netlify 同样需自定义域名
-- 但 Netlify 对低流量免费站点更宽容（无商业使用限制）
-- 用户最终将本项目定位为简历作品 + 小范围分享，无需 Vercel 商业版
+- **Netlify `*.netlify.app` 国内可访问**（不同于 Vercel 被墙），无需买自定义域名
+- AI 使用 Google Gemini 免费版（1500次/天），key 在 Netlify 后台环境变量设置
 
 ---
 

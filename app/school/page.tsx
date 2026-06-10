@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import type { School, AdmissionRecord } from '@/lib/types';
+import { parseDescription } from '@/lib/recommendation';
 
 function SchoolDetailContent() {
   const searchParams = useSearchParams();
@@ -68,9 +69,13 @@ function SchoolDetailContent() {
           <span className="text-sm text-blue-100">{school.city}</span>
         </div>
         <h1 className="text-2xl font-extrabold sm:text-3xl">{school.name}</h1>
-        <p className="mt-3 text-sm leading-relaxed text-blue-100">
-          {school.description}
-        </p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {parseDescription(school.description).map((tag, i) => (
+            <span key={i} className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs text-blue-50 backdrop-blur-sm">
+              {tag}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* 历年录取数据 */}

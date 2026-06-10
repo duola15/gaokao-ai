@@ -21,8 +21,12 @@ export async function POST(req: NextRequest) {
     ]);
 
     return NextResponse.json({ answer });
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI问答失败:', error);
-    return NextResponse.json({ answer: '抱歉，AI暂时不可用。请稍后再试或参考我们的数据页面。' }, { status: 200 });
+    const msg = error?.message || error?.status || '网络错误';
+    return NextResponse.json(
+      { answer: `抱歉，AI暂时不可用（${msg}）。请稍后再试，或直接查看推荐页面的数据。` },
+      { status: 200 }
+    );
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import type { RecommendationResult, RecommendationItem } from '@/lib/types';
+import { parseDescription } from '@/lib/recommendation';
 import Link from 'next/link';
 
 function ResultContent() {
@@ -153,6 +154,16 @@ function ResultContent() {
                   </span>
                   <span className="text-xs text-gray-400">{item.school.city}</span>
                 </div>
+                {item.school.description && (() => {
+                  const tags = parseDescription(item.school.description);
+                  return tags.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {tags.slice(0, 4).map((t, i) => (
+                        <span key={i} className="rounded-md bg-white/40 px-1.5 py-0.5 text-xs text-gray-500">{t}</span>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
                 <p className="mt-1 text-base font-semibold text-gray-700">
                   {item.major.major_name}
                 </p>
@@ -346,13 +357,6 @@ function ResultContent() {
         </div>
       )}
 
-      <style jsx>{`
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
-        }
-        .animate-slide-up { animation: slideUp 0.25s ease-out; }
-      `}</style>
     </div>
   );
 }

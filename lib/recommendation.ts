@@ -1,6 +1,18 @@
 import { AdmissionRecord, RecommendationItem, RecommendationTier, School, UserInput } from './types';
 import { getYunnanAdmissionRecords, yunnanSchools } from './seed_data';
 
+/** 解析学校 description JSON 字符串为标签数组 */
+export function parseDescription(desc: string): string[] {
+  if (!desc) return [];
+  try {
+    const arr = JSON.parse(desc);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    // 不是 JSON，尝试按逗号/换行分割
+    return desc.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+  }
+}
+
 const RANK_TIER_THRESHOLD = 2000; // 位次差阈值
 
 export function buildRecommendations(input: UserInput): {
@@ -109,34 +121,33 @@ export function buildRecommendations(input: UserInput): {
   return { 冲, 稳, 保, allRecords };
 }
 
-/** 生成历史数据摘要文本供 AI 分析 */
+/** 生成历史数据摘要文本供 AI 分析（严格控制长度） */
 export function generateHistoricalSummary(
   items: RecommendationItem[],
   allRecords: AdmissionRecord[]
 ): string {
-  const schoolIds = new Set(items.map((i) => i.school.id));
-  const relevantRecords = allRecords.filter((r) => schoolIds.has(r.school_id));
+  const topItems = items.slice(0, 8); // 最多8所学校
+  const schoolIds = new Set(topItems.map((i) => i.school.id));
+  // 仅保留 2023-2025 数据，进一步缩短
+  const relevantRecords = allRecords.filter(
+    (r) => schoolIds.has(r.school_id) && r.year >= 2023
+  );
 
   const lines: string[] = [];
-  for (const sid of schoolIds) {
-    const school = yunnanSchools.find((s) => s.id === sid);
-    if (!school) continue;
-    const schoolRecords = relevantRecords.filter((r) => r.school_id === sid);
-    const majorNames = [...new Set(schoolRecords.map((r) => r.major_name))];
+  for (const item of topItems.slice(0, 6)) {
+    const school = item.school;
+    const schoolRecords = relevantRecords
+      .filter((r) => r.school_id === school.id)
+      .sort((a, b) => b.year - a.year)
+      .slice(0, 5); // 每校最多5条
 
-    lines.push(`\n【${school.name}】（${school.school_type}，${school.city}）`);
-    for (const major of majorNames) {
-      const majorRecords = schoolRecords.filter((r) => r.major_name === major);
-      const yearData = majorRecords
-        .sort((a, b) => b.year - a.year)
-        .map(
-          (r) =>
-            `${r.year}年: 最低分${r.min_score}/位次${r.min_rank}，平均分${r.avg_score}/位次${r.avg_rank}`
-        )
-        .join('；');
-      lines.push(`  - ${major}：${yearData}`);
+    if (schoolRecords.length === 0) continue;
+
+    lines.push(`\n【${school.name}】${school.school_type}·${school.city}`);
+    for (const r of schoolRecords) {
+      lines.push(`  ${r.year}年 ${r.major_name.slice(0,20)}：最低${r.min_score}分/位次${r.min_rank}`);
     }
   }
 
-  return lines.join('\n');
+  return lines.join('\n') || '（暂无历史数据）';
 }

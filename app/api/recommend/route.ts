@@ -30,15 +30,11 @@ export async function POST(req: NextRequest) {
     const { 冲, 稳, 保, allRecords } = buildRecommendations(input);
     const allItems = [...冲, ...稳, ...保];
 
-    // 2. AI 分析
+    // 2. AI 分析（仅取 Top-6 学校 + 近3年数据，防 token 溢出）
     let aiAnalysis = '';
     if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here') {
       try {
-        // 只取推荐列表中前10所学校 + 仅2025年数据，避免token溢出
-        const topSchoolIds = new Set(allItems.slice(0, 15).map(i => i.school.id));
-        const recentRecords = allRecords.filter(r => r.year >= 2023 && topSchoolIds.has(r.school_id));
-        const historicalSummary = generateHistoricalSummary(allItems.slice(0, 10), recentRecords);
-
+        const historicalSummary = generateHistoricalSummary(allItems, allRecords);
         const prompt = fillPrompt(RECOMMENDATION_PROMPT, {
           score: String(input.score),
           rank: String(input.rank),
@@ -50,7 +46,7 @@ export async function POST(req: NextRequest) {
           historical_data: historicalSummary,
         });
 
-        aiAnalysis = await chat([{ role: 'user', content: prompt }]);
+        aiAnalysis = await chat([{ role: 'user', content: prompt.slice(0, 6000) }]); // 最终截断保底
       } catch (aiError: any) {
         console.error('AI分析失败:', aiError);
         aiAnalysis = `⚠️ AI分析暂时不可用（${aiError?.message || aiError?.status || '网络错误'}），以下为基于位次差算法的推荐结果：\n\n` +
