@@ -17,18 +17,22 @@ export default function RecommendPage() {
   const [loading, setLoading] = useState(false);
 
   const subjectOptions = ['物理', '化学', '生物', '历史', '地理', '政治'];
-  const cityOptions = ['昆明', '大理', '曲靖', '玉溪', '丽江', '保山', '昭通', '普洱'];
-  const majorDirections = [
-    '计算机/软件',
-    '医学/药学',
-    '师范/教育',
-    '财经/金融',
-    '机械/电气',
-    '法律',
-    '建筑/土木',
-    '农林',
-    '语言/外语',
+  const subjectPresets = ['物化生', '物化地', '物化政', '物生地', '物生政', '物地政', '史地政', '史政生', '史生化', '史地化'];
+  const cityOptions = [
+    '北京', '上海', '广州', '深圳', '杭州', '南京', '武汉', '成都', '重庆', '西安',
+    '天津', '长沙', '合肥', '厦门', '青岛', '大连', '苏州', '郑州', '济南', '哈尔滨',
+    '昆明', '大理', '曲靖', '玉溪', '丽江', '保山',
   ];
+  const majorDirections = [
+    '计算机/人工智能', '软件工程', '电子信息/通信', '电气/自动化', '机械/航空航天',
+    '临床医学', '口腔医学', '药学/中药学', '护理学',
+    '师范/数学', '师范/英语', '师范/物理',
+    '财经/会计', '金融/经济', '工商管理',
+    '法学', '新闻传播', '建筑/土木', '农林/园艺',
+    '外语/英语', '中文/历史', '哲学/社会学',
+    '材料/化工', '环境/能源', '生物/食品',
+  ];
+  const allCities = ['不限', ...cityOptions];
 
   const toggleArray = (arr: string[], setArr: (v: string[]) => void, value: string) => {
     if (arr.includes(value)) {
@@ -148,6 +152,28 @@ export default function RecommendPage() {
           <h2 className="mb-4 text-lg font-semibold text-gray-800">
             🔬 选科组合（可选，选了更准）
           </h2>
+          <p className="mb-3 text-xs text-gray-400">快捷组合</p>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {subjectPresets.map((preset) => {
+              const map: Record<string, string> = { '物':'物理', '化':'化学', '生':'生物', '史':'历史', '地':'地理', '政':'政治' };
+              const mapped = preset.split('').map((c: string) => map[c] || '');
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setForm({ ...form, subjects: mapped })}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    JSON.stringify(form.subjects.sort()) === JSON.stringify(mapped.sort())
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  {preset}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mb-3 text-xs text-gray-400">逐科选择</p>
           <div className="flex flex-wrap gap-2">
             {subjectOptions.map((s) => (
               <button

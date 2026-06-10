@@ -13,6 +13,7 @@ function ResultContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'冲' | '稳' | '保'>('稳');
+  const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -234,21 +235,139 @@ function ResultContent() {
           修改条件
         </button>
         <button
-          onClick={() => {
-            const text = `【${input.score}分·${input.rank}名】志愿填报推荐：\n冲刺：${recommendations.冲.slice(0,3).map(i => i.school.name).join('、')}\n稳妥：${recommendations.稳.slice(0,3).map(i => i.school.name).join('、')}\n保底：${recommendations.保.slice(0,3).map(i => i.school.name).join('、')}\n\n——来自高考志愿AI助手`;
-            if (navigator.share) {
-              navigator.share({ text });
-            } else {
-              navigator.clipboard.writeText(text).then(() => alert('已复制分享文本！'));
-            }
-          }}
+          onClick={() => setShowShare(true)}
           className="flex-1 rounded-2xl bg-green-600 py-4 text-center font-medium text-white hover:bg-green-700"
         >
           📤 分享给家长/同学
         </button>
       </div>
+
+      {/* 分享弹窗 */}
+      {showShare && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setShowShare(false)}>
+          <div
+            className="w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800">分享到</h3>
+              <button onClick={() => setShowShare(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <p className="mb-5 text-sm text-gray-400">把志愿推荐结果分享给家人一起参考</p>
+
+            <div className="grid grid-cols-4 gap-4">
+              {[
+                {
+                  name: '微信好友',
+                  icon: '💬',
+                  color: 'bg-green-500',
+                  action: () => {
+                    const text = shareText(recommendations, input);
+                    navigator.clipboard.writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app').then(() => alert('已复制！打开微信 → 粘贴发送给好友'));
+                  },
+                },
+                {
+                  name: '朋友圈',
+                  icon: '🟢',
+                  color: 'bg-green-600',
+                  action: () => {
+                    const text = shareText(recommendations, input);
+                    navigator.clipboard.writeText(text + '\n\n🔗 yunnan-gaokao.netlify.app').then(() => alert('已复制！打开微信 → 朋友圈 → 长按粘贴'));
+                  },
+                },
+                {
+                  name: 'QQ好友',
+                  icon: '🐧',
+                  color: 'bg-blue-500',
+                  action: () => {
+                    const text = shareText(recommendations, input);
+                    navigator.clipboard.writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app').then(() => alert('已复制！打开QQ → 粘贴发送'));
+                  },
+                },
+                {
+                  name: 'QQ空间',
+                  icon: '⭐',
+                  color: 'bg-yellow-500',
+                  action: () => {
+                    const text = shareText(recommendations, input);
+                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开QQ空间 → 发说说 → 粘贴'));
+                  },
+                },
+                {
+                  name: '微博',
+                  icon: '📢',
+                  color: 'bg-red-500',
+                  action: () => {
+                    const text = shareText(recommendations, input) + '\n#高考志愿# #云南高考#';
+                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开微博 → 发帖 → 粘贴'));
+                  },
+                },
+                {
+                  name: '小红书',
+                  icon: '📕',
+                  color: 'bg-red-400',
+                  action: () => {
+                    const text = shareText(recommendations, input) + '\n#高考志愿填报 #云南高考';
+                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开小红书 → 发笔记 → 粘贴'));
+                  },
+                },
+                {
+                  name: '复制链接',
+                  icon: '🔗',
+                  color: 'bg-gray-500',
+                  action: () => {
+                    navigator.clipboard.writeText('https://yunnan-gaokao.netlify.app').then(() => alert('链接已复制！可以直接粘贴到任何地方'));
+                  },
+                },
+                {
+                  name: '短信转发',
+                  icon: '📱',
+                  color: 'bg-indigo-500',
+                  action: () => {
+                    const text = shareText(recommendations, input);
+                    const smsUrl = `sms:?body=${encodeURIComponent(text + '\nyunnan-gaokao.netlify.app')}`;
+                    window.open(smsUrl, '_blank');
+                  },
+                },
+              ].map((platform) => (
+                <button
+                  key={platform.name}
+                  onClick={platform.action}
+                  className="flex flex-col items-center gap-1.5"
+                >
+                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${platform.color} text-2xl shadow-md transition hover:scale-105 active:scale-95`}>
+                    {platform.icon}
+                  </div>
+                  <span className="text-xs text-gray-500">{platform.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        .animate-slide-up { animation: slideUp 0.25s ease-out; }
+      `}</style>
     </div>
   );
+}
+
+function shareText(recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] }, input: any): string {
+  const lines = [
+    `📊 【${input.score}分·${input.rank}名】高考志愿推荐方案`,
+    '',
+    '🎯 冲刺：' + (recommendations.冲.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
+    '✅ 稳妥：' + (recommendations.稳.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
+    '🛡️ 保底：' + (recommendations.保.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
+    '',
+    '—— 来自【高考志愿AI助手】，免费生成你的方案：',
+  ];
+  return lines.join('\n');
 }
 
 export default function ResultPage() {
