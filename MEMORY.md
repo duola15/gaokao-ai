@@ -13,7 +13,7 @@
 
 ---
 
-## 当前状态（2026-06-08）
+## 当前状态（2026-06-10，全面优化上线）
 
 ### ✅ 已完成
 - 构建通过（next build，Turbopack）
@@ -34,10 +34,14 @@
 - CSS动画规范化（`style jsx`→globals.css）
 - 构建验证通过（next build 成功）
 
-### ⚠️ 待解决
-- **爱发电用户名**: 代码里 `your_username` 需替换为真实用户名（`result/page.tsx` + `layout.tsx` 各一处）
-- 2024 年数据缺失（Excel 源中没有 2024）
-- Gemini AI 已接通，prompt 已优化为六段式详细分析
+### ⚠️ 仅剩问题
+- 2024 年数据缺失（Excel 源中没有 2024 年）
+- AI 偶尔因 token 超限回退（已做 6 校 5 条截断 + 6000 字保底缓解）
+
+### ✅ 最新完成（2026-06-10）
+- 爱发电创建并绑定：`https://afdian.com/a/gaokao-ai`
+- 赞助方案：¥5/月，昵称"考生家长"
+- 所有 `your_username` 已替换为 `gaokao-ai`
 
 ---
 
