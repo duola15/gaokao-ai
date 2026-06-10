@@ -23,10 +23,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ answer });
   } catch (error: any) {
     console.error('AI问答失败:', error);
-    const msg = error?.message || error?.status || '网络错误';
-    return NextResponse.json(
-      { answer: `抱歉，AI暂时不可用（${msg}）。请稍后再试，或直接查看推荐页面的数据。` },
-      { status: 200 }
-    );
+    const status = error?.status || error?.response?.status || 0;
+    const msg = status === 429
+      ? '提问的人有点多，AI 正在排队。请稍微等一下再试试，或者先看看推荐页面的数据～'
+      : `抱歉，AI暂时不可用（${error?.message || '网络错误'}）。请稍后再试。`;
+    return NextResponse.json({ answer: msg }, { status: 200 });
   }
 }

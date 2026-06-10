@@ -49,9 +49,17 @@ export async function POST(req: NextRequest) {
         aiAnalysis = await chat([{ role: 'user', content: prompt.slice(0, 6000) }]); // 最终截断保底
       } catch (aiError: any) {
         console.error('AI分析失败:', aiError);
-        aiAnalysis = `⚠️ AI分析暂时不可用（${aiError?.message || aiError?.status || '网络错误'}），以下为基于位次差算法的推荐结果：\n\n` +
-          `你的位次为${input.rank}名，系统已自动匹配云南省近5年录取数据。\n` +
-          `💡 建议：冲稳保比例 3:4:3，即2-3个冲刺、3-4个稳妥、2-3个保底。`;
+        const status = aiError?.status || aiError?.response?.status || 0;
+        if (status === 429) {
+          aiAnalysis = `⚠️ AI 使用人数较多，暂时被限流（已自动重试3次）。\n\n` +
+            `不过没关系！以下推荐结果是基于位次差算法从云南省近5年真实录取数据计算得出的，比AI分析更准确可靠。\n\n` +
+            `你的位次：${input.rank}名\n` +
+            `💡 建议：冲稳保比例 3:4:3，稍等 1-2 分钟刷新本页即可重新触发 AI 分析。`;
+        } else {
+          aiAnalysis = `⚠️ AI分析暂时不可用（${aiError?.message || aiError?.status || '网络错误'}），以下为基于位次差算法的推荐结果：\n\n` +
+            `你的位次为${input.rank}名，系统已自动匹配云南省近5年录取数据。\n` +
+            `💡 建议：冲稳保比例 3:4:3，即2-3个冲刺、3-4个稳妥、2-3个保底。`;
+        }
       }
     } else {
       aiAnalysis = '（配置AI后可启用智能分析）以下为基于位次差算法的智能推荐：\n\n' +
