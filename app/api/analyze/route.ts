@@ -1,18 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildRecommendations, generateHistoricalSummary } from '@/lib/recommendation';
-import { chat } from '@/lib/deepseek';
+import { chatStream } from '@/lib/deepseek';
 import { fillPrompt, RECOMMENDATION_PROMPT } from '@/lib/prompts';
 import { analyzeScorePosition } from '@/lib/cutoff';
 import type { UserInput } from '@/lib/types';
 
-/** AI 分析 —— 独立端点，前端拿到推荐数据后再调此接口 */
+/**
+ * AI 分析 —— 流式 SSE 响应
+ * 前端拿推荐数据后调用，文字边生成边显示
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { score, rank, province, subject_group, subjects, cities, major_direction } = body;
 
     if (!score || !rank) {
-      return NextResponse.json({ error: '缺少分数/位次' }, { status: 400 });
+      return new Response(JSON.stringify({ error: '缺少分数/位次' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const input: UserInput = {
@@ -28,16 +34,13 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    // 跑推荐算法（纯内存运算，< 100ms）
+    // 跑推荐算法
     const { 冲, 稳, 保, allRecords } = buildRecommendations(input);
     const allItems = [...冲, ...稳, ...保];
 
-    // 生成历史摘要
+    // 历史摘要（进一步压缩：4校×3条）
     const historicalSummary = generateHistoricalSummary(allItems, allRecords);
-
-    // 2025 批次线参考
     const position = analyzeScorePosition(input.score, input.subject_group);
-    const cutoffInfo = position.summary;
 
     const prompt = fillPrompt(RECOMMENDATION_PROMPT, {
       score: String(input.score),
@@ -47,33 +50,59 @@ export async function POST(req: NextRequest) {
       subjects: input.subjects || '不限',
       preferred_cities: input.preferences.cities.join('、') || '不限',
       major_direction: input.preferences.major_direction || '不限',
-      cutoff_info: cutoffInfo,
-      historical_data: historicalSummary,
+      cutoff_info: position.summary,
+      historical_data: historicalSummary.slice(0, 3000),
     });
 
-    const analysis = await chat(
-      [{ role: 'user', content: prompt.slice(0, 6000) }],
-      0.3,
-    );
+    // 流式输出 — 文字实时推到前端
+    const stream = await chatStream([
+      { role: 'user', content: prompt.slice(0, 3000) },
+    ]);
 
-    return NextResponse.json({ analysis, generated_at: new Date().toISOString() });
+    // 将 OpenAI stream 转为 SSE
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream as any) {
+            const text = chunk.choices?.[0]?.delta?.content || '';
+            if (text) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+            }
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        } catch (e: any) {
+          // 流中断，发送已累积内容
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ error: e?.message || '分析中断' })}\n\n`),
+          );
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
   } catch (error: any) {
     console.error('AI分析失败:', error);
-    const status = error?.status || error?.response?.status || 0;
-
-    let fallback = '';
-    if (status === 429) {
-      fallback =
-        `⚠️ AI 使用人数较多，暂时被限流。\n\n` +
-        `不过没关系！推荐结果是基于位次差算法从云南省近5年真实录取数据计算的，比 AI 分析更准确可靠。\n\n` +
-        `💡 建议：冲稳保比例 3:4:3，稍后刷新本页即可重新触发 AI 分析。`;
-    } else {
-      fallback =
-        `⚠️ AI分析暂时不可用（${error?.message || '网络错误'}）。\n\n` +
-        `推荐结果基于位次差算法，已按冲刺/稳妥/保底三级分类。\n` +
-        `💡 建议：优先考虑标有"稳妥"且位次接近的学校。`;
-    }
-
-    return NextResponse.json({ analysis: fallback, generated_at: new Date().toISOString() });
+    return new Response(
+      JSON.stringify({
+        analysis:
+          `⚠️ AI分析暂时不可用（${error?.message || '网络错误'}）。\n\n` +
+          `推荐结果基于位次差算法，已按冲刺/稳妥/保底三级分类，比AI分析更准确。\n\n` +
+          `💡 请以云南省招生考试院(ynzs.cn)和阳光高考网(gaokao.chsi.com.cn)官方数据为准。`,
+        generated_at: new Date().toISOString(),
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   }
 }
