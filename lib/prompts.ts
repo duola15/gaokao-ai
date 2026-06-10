@@ -11,13 +11,16 @@ export const RECOMMENDATION_PROMPT = `你是一位资深高考志愿填报专家
 - 偏好城市：{preferred_cities}
 - 专业方向：{major_direction}
 
+## 2025年云南省批次线参考
+{cutoff_info}
+
 ## 历史录取数据（部分）
 {historical_data}
 
 请生成一份详尽的志愿分析报告（markdown格式，尽量详细不用字数限制）：
 
 ## 一、考生定位分析
-- 该位次在云南省{subject_group}中的水平定位（211/一本/二本等门槛对比）
+- 该位次在云南省{subject_group}中的水平定位（与2025年一本线对比、211/985门槛评估）
 - 可选择学校的层次范围
 - 与去年同位次可报考学校的对比参考
 

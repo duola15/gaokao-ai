@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildRecommendations } from '@/lib/recommendation';
+import { analyzeScorePosition, getYunnanCutoffHistory } from '@/lib/cutoff';
 import type { UserInput } from '@/lib/types';
 
 /** 纯算法推荐 —— 秒返，不等 AI */
@@ -27,9 +28,19 @@ export async function POST(req: NextRequest) {
 
     const { 冲, 稳, 保 } = buildRecommendations(input);
 
+    // 批次线定位（纯内存计算）
+    const position = analyzeScorePosition(input.score, input.subject_group);
+    const cutoffHistory = getYunnanCutoffHistory();
+
     return NextResponse.json({
       input,
       recommendations: { 冲, 稳, 保 },
+      cutoff: {
+        position: position.level,
+        diff: position.diff,
+        summary: position.summary,
+        history: cutoffHistory,
+      },
       generated_at: new Date().toISOString(),
     });
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildRecommendations, generateHistoricalSummary } from '@/lib/recommendation';
 import { chat } from '@/lib/deepseek';
 import { fillPrompt, RECOMMENDATION_PROMPT } from '@/lib/prompts';
+import { analyzeScorePosition } from '@/lib/cutoff';
 import type { UserInput } from '@/lib/types';
 
 /** AI 分析 —— 独立端点，前端拿到推荐数据后再调此接口 */
@@ -33,6 +34,11 @@ export async function POST(req: NextRequest) {
 
     // 生成历史摘要
     const historicalSummary = generateHistoricalSummary(allItems, allRecords);
+
+    // 2025 批次线参考
+    const position = analyzeScorePosition(input.score, input.subject_group);
+    const cutoffInfo = position.summary;
+
     const prompt = fillPrompt(RECOMMENDATION_PROMPT, {
       score: String(input.score),
       rank: String(input.rank),
@@ -41,6 +47,7 @@ export async function POST(req: NextRequest) {
       subjects: input.subjects || '不限',
       preferred_cities: input.preferences.cities.join('、') || '不限',
       major_direction: input.preferences.major_direction || '不限',
+      cutoff_info: cutoffInfo,
       historical_data: historicalSummary,
     });
 

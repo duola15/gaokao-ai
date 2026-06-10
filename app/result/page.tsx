@@ -16,6 +16,12 @@ interface ResultData {
     preferences: { cities: string[]; major_direction: string; exclude_types?: string[] };
   };
   recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] };
+  cutoff?: {
+    position: string;
+    diff: number;
+    summary: string;
+    history: { year: number; arts: number; science: number }[];
+  };
 }
 
 function ResultContent() {
@@ -201,6 +207,33 @@ function ResultContent() {
           <strong className="text-blue-600">{input.rank}</strong> · 偏好{' '}
           {input.preferences.major_direction || '不限'}
         </p>
+        {/* 批次线参考 */}
+        {result.cutoff && (
+          <div
+            className={`mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${
+              result.cutoff.diff >= 0
+                ? 'bg-green-50 text-green-700'
+                : 'bg-orange-50 text-orange-700'
+            }`}
+          >
+            <span className="font-semibold">
+              {result.cutoff.diff >= 0 ? '✅' : '⚠️'}
+            </span>
+            <span>
+              2025云南{input.subject_group === '理工类' ? '理科' : '文科'}一本线：
+              <strong>
+                {input.subject_group === '理工类'
+                  ? result.cutoff.history[0]?.science
+                  : result.cutoff.history[0]?.arts}
+                分
+              </strong>
+              ，考生
+              {result.cutoff.diff >= 0
+                ? `高出一本线${result.cutoff.diff}分`
+                : `低于一本线${Math.abs(result.cutoff.diff)}分`}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 三级Tab切换 */}
