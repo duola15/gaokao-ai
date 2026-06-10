@@ -1,0 +1,14 @@
+{
+    "preferences":  {
+                        "major_direction":  "计算机",
+                        "cities":  [
+                                       "昆明",
+                                       "北京"
+                                   ]
+                    },
+    "province":  "yunnan",
+    "score":  620,
+    "subject_group":  "理工类",
+    "rank":  5000,
+    "subjects":  "物理,化学,生物"
+}

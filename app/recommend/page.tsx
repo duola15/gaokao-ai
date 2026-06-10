@@ -1,0 +1,248 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { UserInput } from '@/lib/types';
+
+export default function RecommendPage() {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    score: '',
+    rank: '',
+    subject_group: '理工类' as '理工类' | '文史类',
+    subjects: [] as string[],
+    preferred_cities: [] as string[],
+    major_direction: '',
+  });
+  const [loading, setLoading] = useState(false);
+
+  const subjectOptions = ['物理', '化学', '生物', '历史', '地理', '政治'];
+  const cityOptions = ['昆明', '大理', '曲靖', '玉溪', '丽江', '保山', '昭通', '普洱'];
+  const majorDirections = [
+    '计算机/软件',
+    '医学/药学',
+    '师范/教育',
+    '财经/金融',
+    '机械/电气',
+    '法律',
+    '建筑/土木',
+    '农林',
+    '语言/外语',
+  ];
+
+  const toggleArray = (arr: string[], setArr: (v: string[]) => void, value: string) => {
+    if (arr.includes(value)) {
+      setArr(arr.filter((v) => v !== value));
+    } else {
+      setArr([...arr, value]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const params = new URLSearchParams({
+      score: form.score,
+      rank: form.rank,
+      province: 'yunnan',
+      subject_group: form.subject_group,
+      subjects: form.subjects.join(',') || '无',
+      cities: form.preferred_cities.join(',') || '不限',
+      major_direction: form.major_direction || '不限',
+    });
+
+    router.push(`/result?${params.toString()}`);
+  };
+
+  const isFormValid =
+    form.score && form.rank && Number(form.score) > 0 && Number(form.rank) > 0;
+
+  return (
+    <div className="page-enter">
+      {/* 顶部返回 */}
+      <div className="mb-6 mt-4">
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
+          ← 返回首页
+        </button>
+      </div>
+
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-gray-800 sm:text-3xl">
+          输入你的高考信息
+        </h1>
+        <p className="mt-2 text-gray-500">
+          填得越详细，AI推荐越精准
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* 分数 & 位次 */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            📊 核心信息（必填）
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-600">
+                高考分数
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="例如：580"
+                value={form.score}
+                onChange={(e) => setForm({ ...form, score: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-lg font-semibold text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-600">
+                全省位次
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="例如：15000"
+                value={form.rank}
+                onChange={(e) => setForm({ ...form, rank: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-lg font-semibold text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                高考成绩单上会显示你的全省排名
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 选科类别 */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            📚 选科类别
+          </h2>
+          <div className="flex gap-3">
+            {(['理工类', '文史类'] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setForm({ ...form, subject_group: g })}
+                className={`rounded-full px-6 py-3 font-medium transition ${
+                  form.subject_group === g
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 选科组合（可选） */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            🔬 选科组合（可选，选了更准）
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {subjectOptions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggleArray(form.subjects, (v) => setForm({ ...form, subjects: v }), s)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  form.subjects.includes(s)
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 偏好城市 */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            🏙️ 偏好城市（可选）
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {cityOptions.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() =>
+                  toggleArray(form.preferred_cities, (v) => setForm({ ...form, preferred_cities: v }), c)
+                }
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  form.preferred_cities.includes(c)
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 专业方向 */}
+        <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-gray-800">
+            🎯 专业方向（可选）
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {majorDirections.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setForm({ ...form, major_direction: form.major_direction === d ? '' : d })}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  form.major_direction === d
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 提交按钮 */}
+        <button
+          type="submit"
+          disabled={!isFormValid || loading}
+          className={`w-full rounded-2xl py-5 text-lg font-bold text-white shadow-lg transition-all ${
+            isFormValid && !loading
+              ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:scale-[1.02] active:scale-95'
+              : 'cursor-not-allowed bg-gray-300 text-gray-500'
+          }`}
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              AI正在分析中...
+            </span>
+          ) : (
+            '🚀 生成志愿方案'
+          )}
+        </button>
+
+        {!isFormValid && (
+          <p className="text-center text-sm text-gray-400">
+            请先填写分数和位次
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --success: #16a34a;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+/* 渐变背景 */
+.hero-gradient {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #db2777 100%);
+}
+
+/* 移动端自适应滚动 */
+.scroll-x {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 冲刺/稳妥/保底 三色 */
+.tier-chong {
+  background: linear-gradient(135deg, #fef2f2, #ffe4e6);
+  border-left: 4px solid #dc2626;
+}
+.tier-wen {
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border-left: 4px solid #2563eb;
+}
+.tier-bao {
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  border-left: 4px solid #16a34a;
+}
+
+/* 页面过渡 */
+.page-enter {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
