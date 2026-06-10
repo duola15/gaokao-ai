@@ -1,30 +1,80 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import type { RecommendationResult, RecommendationItem } from '@/lib/types';
+import type { RecommendationItem } from '@/lib/types';
 import { parseDescription } from '@/lib/recommendation';
 import Link from 'next/link';
+
+interface ResultData {
+  input: {
+    score: number;
+    rank: number;
+    province: string;
+    subject_group: string;
+    subjects: string;
+    preferences: { cities: string[]; major_direction: string; exclude_types?: string[] };
+  };
+  recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] };
+}
 
 function ResultContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const [result, setResult] = useState<RecommendationResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // 阶段1：推荐数据
+  const [result, setResult] = useState<ResultData | null>(null);
+  const [loadingRecs, setLoadingRecs] = useState(true);
+  const [recError, setRecError] = useState('');
+
+  // 阶段2：AI 分析
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiError, setAiError] = useState('');
+
   const [activeTab, setActiveTab] = useState<'冲' | '稳' | '保'>('稳');
   const [showShare, setShowShare] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  // 请求 AI 分析
+  const fetchAi = useCallback(
+    async (params: Record<string, string>) => {
+      setLoadingAi(true);
+      setAiError('');
       try {
-        const params: Record<string, string> = {};
-        searchParams.forEach((v, k) => {
-          params[k] = v;
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            score: params.score,
+            rank: params.rank,
+            province: params.province || 'yunnan',
+            subject_group: params.subject_group || '理工类',
+            subjects: params.subjects || '',
+            cities: params.cities && params.cities !== '不限' ? params.cities.split(',') : [],
+            major_direction: params.major_direction && params.major_direction !== '不限' ? params.major_direction : '',
+          }),
         });
+        if (!res.ok) throw new Error('AI 请求失败');
+        const data = await res.json();
+        setAiAnalysis(data.analysis || '');
+      } catch (err: any) {
+        setAiError(err?.message || 'AI 分析暂时不可用');
+      } finally {
+        setLoadingAi(false);
+      }
+    },
+    [],
+  );
 
-        // 先本地计算快速出结果，再请求AI分析
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    searchParams.forEach((v, k) => {
+      params[k] = v;
+    });
+
+    // 阶段1：快速加载推荐数据
+    (async () => {
+      try {
         const res = await fetch('/api/recommend', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -40,40 +90,39 @@ function ResultContent() {
             },
           }),
         });
-
-        if (!res.ok) {
-          throw new Error('请求失败');
-        }
-
-        const data = await res.json();
+        if (!res.ok) throw new Error('请求失败');
+        const data: ResultData = await res.json();
         setResult(data);
+        setLoadingRecs(false);
+
+        // 阶段2：异步加载 AI 分析（不阻塞页面）
+        fetchAi(params);
       } catch (err) {
-        setError('数据加载失败，请返回重试');
-      } finally {
-        setLoading(false);
+        setRecError('数据加载失败，请返回重试');
+        setLoadingRecs(false);
       }
-    };
+    })();
+  }, [searchParams, fetchAi]);
 
-    fetchData();
-  }, [searchParams]);
-
-  if (loading) {
+  // Loading 状态（只在等待推荐数据时显示）
+  if (loadingRecs) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center">
         <svg className="mb-4 h-12 w-12 animate-spin text-blue-600" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        <p className="text-lg font-semibold text-gray-700">AI 正在分析你的志愿...</p>
-        <p className="mt-2 text-sm text-gray-400">正在检索云南省近三年录取位次数据</p>
+        <p className="text-lg font-semibold text-gray-700">正在检索录取数据...</p>
+        <p className="mt-2 text-sm text-gray-400">基于云南省近5年真实录取位次</p>
       </div>
     );
   }
 
-  if (error || !result) {
+  // 推荐数据加载失败
+  if (recError || !result) {
     return (
       <div className="mt-20 text-center">
-        <p className="text-red-500">{error || '未知错误'}</p>
+        <p className="text-red-500">{recError || '未知错误'}</p>
         <button onClick={() => router.back()} className="mt-4 rounded-xl bg-blue-600 px-6 py-3 text-white">
           ← 返回重新输入
         </button>
@@ -81,7 +130,8 @@ function ResultContent() {
     );
   }
 
-  const { recommendations, input, ai_analysis } = result;
+  const { recommendations, input } = result;
+
   const tiers: Array<{ key: '冲' | '稳' | '保'; label: string; color: string; data: RecommendationItem[] }> = [
     { key: '冲', label: '🎯 冲刺', color: 'tier-chong', data: recommendations.冲 },
     { key: '稳', label: '✅ 稳妥', color: 'tier-wen', data: recommendations.稳 },
@@ -103,13 +153,11 @@ function ResultContent() {
       </div>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-gray-800 sm:text-3xl">
-          你的志愿方案
-        </h1>
+        <h1 className="text-2xl font-extrabold text-gray-800 sm:text-3xl">你的志愿方案</h1>
         <p className="mt-1 text-gray-500">
-          分数 <strong className="text-blue-600">{input.score}</strong> ·
-          位次 <strong className="text-blue-600">{input.rank}</strong> ·
-          偏好 {input.preferences.major_direction || '不限'}
+          分数 <strong className="text-blue-600">{input.score}</strong> · 位次{' '}
+          <strong className="text-blue-600">{input.rank}</strong> · 偏好{' '}
+          {input.preferences.major_direction || '不限'}
         </p>
       </div>
 
@@ -146,33 +194,43 @@ function ResultContent() {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-bold text-gray-800">
-                    {item.school.name}
-                  </h3>
+                  <h3 className="text-lg font-bold text-gray-800">{item.school.name}</h3>
                   <span className="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium text-gray-500">
                     {item.school.school_type}
                   </span>
                   <span className="text-xs text-gray-400">{item.school.city}</span>
                 </div>
-                {item.school.description && (() => {
-                  const tags = parseDescription(item.school.description);
-                  return tags.length > 0 ? (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {tags.slice(0, 4).map((t, i) => (
-                        <span key={i} className="rounded-md bg-white/40 px-1.5 py-0.5 text-xs text-gray-500">{t}</span>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-                <p className="mt-1 text-base font-semibold text-gray-700">
-                  {item.major.major_name}
-                </p>
+                {item.school.description &&
+                  (() => {
+                    const tags = parseDescription(item.school.description);
+                    return tags.length > 0 ? (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {tags.slice(0, 4).map((t, i) => (
+                          <span
+                            key={i}
+                            className="rounded-md bg-white/40 px-1.5 py-0.5 text-xs text-gray-500"
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+                <p className="mt-1 text-base font-semibold text-gray-700">{item.major.major_name}</p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-                  <span>🎯 录取位次：<strong className="text-gray-800">{item.major.avg_rank}</strong></span>
-                  <span>📊 平均分：<strong className="text-gray-800">{item.major.avg_score}</strong></span>
-                  <span>👥 招生：<strong className="text-gray-800">{item.major.enrollment_quota}人</strong></span>
+                  <span>
+                    🎯 录取位次：<strong className="text-gray-800">{item.major.avg_rank}</strong>
+                  </span>
+                  <span>
+                    📊 平均分：<strong className="text-gray-800">{item.major.avg_score}</strong>
+                  </span>
+                  <span>
+                    👥 招生：<strong className="text-gray-800">{item.major.enrollment_quota}人</strong>
+                  </span>
                   {item.major.tuition > 0 && (
-                    <span>💰 <strong className="text-gray-800">¥{item.major.tuition}/年</strong></span>
+                    <span>
+                      💰 <strong className="text-gray-800">¥{item.major.tuition}/年</strong>
+                    </span>
                   )}
                 </div>
               </div>
@@ -184,8 +242,8 @@ function ResultContent() {
                     item.match_score >= 70
                       ? 'bg-green-500 text-white'
                       : item.match_score >= 50
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-300 text-gray-600'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-300 text-gray-600'
                   }`}
                 >
                   {item.match_score}
@@ -194,11 +252,14 @@ function ResultContent() {
               </div>
             </div>
 
-            {/* 历年趋势 */}
             <div className="mt-3 border-t border-white/40 pt-3">
               <p className="text-xs text-gray-400">
-                位次差：{item.rank_diff > 0 ? `低${item.rank_diff}名（相对安全）` : `高${Math.abs(item.rank_diff)}名（需要冲刺）`}
-                &nbsp;·&nbsp;{item.major.subject_requirements && `选科要求：${item.major.subject_requirements}`}
+                位次差：
+                {item.rank_diff > 0
+                  ? `低${item.rank_diff}名（相对安全）`
+                  : `高${Math.abs(item.rank_diff)}名（需要冲刺）`}
+                &nbsp;·&nbsp;
+                {item.major.subject_requirements && `选科要求：${item.major.subject_requirements}`}
               </p>
             </div>
           </div>
@@ -219,23 +280,53 @@ function ResultContent() {
         >
           去爱发电支持 →
         </a>
-        <p className="mt-2 text-xs text-amber-200">
-          完全自愿，不影响使用任何功能
-        </p>
+        <p className="mt-2 text-xs text-amber-200">完全自愿，不影响使用任何功能</p>
       </div>
 
-      {/* AI 分析 */}
-      {ai_analysis && (
-        <div className="mt-8 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-800">
-            🤖 AI 综合分析
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-600">仅供参考</span>
-          </h2>
-          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap leading-relaxed">
-            {ai_analysis}
+      {/* AI 分析区域 */}
+      <div className="mt-8 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-800">
+          🤖 AI 综合分析
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-600">
+            仅供参考
+          </span>
+        </h2>
+
+        {/* AI 加载中 */}
+        {loadingAi && (
+          <div className="flex items-center gap-3 text-gray-400">
+            <svg className="h-5 w-5 animate-spin text-blue-500" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            AI 正在分析你的志愿方案...
           </div>
-        </div>
-      )}
+        )}
+
+        {/* AI 分析内容 */}
+        {!loadingAi && aiAnalysis && (
+          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap leading-relaxed">
+            {aiAnalysis}
+          </div>
+        )}
+
+        {/* AI 失败 + 重试按钮 */}
+        {!loadingAi && aiError && !aiAnalysis && (
+          <div className="text-center">
+            <p className="mb-3 text-sm text-gray-400">{aiError}</p>
+            <button
+              onClick={() => {
+                const params: Record<string, string> = {};
+                searchParams.forEach((v, k) => { params[k] = v; });
+                fetchAi(params);
+              }}
+              className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              🔄 重新获取 AI 分析
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* 底部操作 */}
       <div className="mt-8 flex gap-3">
@@ -255,14 +346,22 @@ function ResultContent() {
 
       {/* 分享弹窗 */}
       {showShare && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setShowShare(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setShowShare(false)}
+        >
           <div
             className="w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 animate-slide-up"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-1 flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">分享到</h3>
-              <button onClick={() => setShowShare(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              <button
+                onClick={() => setShowShare(false)}
+                className="text-xl text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
             <p className="mb-5 text-sm text-gray-400">把志愿推荐结果分享给家人一起参考</p>
 
@@ -273,8 +372,10 @@ function ResultContent() {
                   icon: '💬',
                   color: 'bg-green-500',
                   action: () => {
-                    const text = shareText(recommendations, input);
-                    navigator.clipboard.writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app').then(() => alert('已复制！打开微信 → 粘贴发送给好友'));
+                    const text = buildShareText(recommendations, input);
+                    navigator.clipboard
+                      .writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app')
+                      .then(() => alert('已复制！打开微信 → 粘贴发送给好友'));
                   },
                 },
                 {
@@ -282,8 +383,10 @@ function ResultContent() {
                   icon: '🟢',
                   color: 'bg-green-600',
                   action: () => {
-                    const text = shareText(recommendations, input);
-                    navigator.clipboard.writeText(text + '\n\n🔗 yunnan-gaokao.netlify.app').then(() => alert('已复制！打开微信 → 朋友圈 → 长按粘贴'));
+                    const text = buildShareText(recommendations, input);
+                    navigator.clipboard
+                      .writeText(text + '\n\n🔗 yunnan-gaokao.netlify.app')
+                      .then(() => alert('已复制！打开微信 → 朋友圈 → 长按粘贴'));
                   },
                 },
                 {
@@ -291,8 +394,10 @@ function ResultContent() {
                   icon: '🐧',
                   color: 'bg-blue-500',
                   action: () => {
-                    const text = shareText(recommendations, input);
-                    navigator.clipboard.writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app').then(() => alert('已复制！打开QQ → 粘贴发送'));
+                    const text = buildShareText(recommendations, input);
+                    navigator.clipboard
+                      .writeText(text + '\n\n🔗 https://yunnan-gaokao.netlify.app')
+                      .then(() => alert('已复制！打开QQ → 粘贴发送'));
                   },
                 },
                 {
@@ -300,8 +405,10 @@ function ResultContent() {
                   icon: '⭐',
                   color: 'bg-yellow-500',
                   action: () => {
-                    const text = shareText(recommendations, input);
-                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开QQ空间 → 发说说 → 粘贴'));
+                    const text = buildShareText(recommendations, input);
+                    navigator.clipboard
+                      .writeText(text)
+                      .then(() => alert('已复制！打开QQ空间 → 发说说 → 粘贴'));
                   },
                 },
                 {
@@ -309,8 +416,11 @@ function ResultContent() {
                   icon: '📢',
                   color: 'bg-red-500',
                   action: () => {
-                    const text = shareText(recommendations, input) + '\n#高考志愿# #云南高考#';
-                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开微博 → 发帖 → 粘贴'));
+                    const text =
+                      buildShareText(recommendations, input) + '\n#高考志愿# #云南高考#';
+                    navigator.clipboard
+                      .writeText(text)
+                      .then(() => alert('已复制！打开微博 → 发帖 → 粘贴'));
                   },
                 },
                 {
@@ -318,8 +428,11 @@ function ResultContent() {
                   icon: '📕',
                   color: 'bg-red-400',
                   action: () => {
-                    const text = shareText(recommendations, input) + '\n#高考志愿填报 #云南高考';
-                    navigator.clipboard.writeText(text).then(() => alert('已复制！打开小红书 → 发笔记 → 粘贴'));
+                    const text =
+                      buildShareText(recommendations, input) + '\n#高考志愿填报 #云南高考';
+                    navigator.clipboard
+                      .writeText(text)
+                      .then(() => alert('已复制！打开小红书 → 发笔记 → 粘贴'));
                   },
                 },
                 {
@@ -327,7 +440,9 @@ function ResultContent() {
                   icon: '🔗',
                   color: 'bg-gray-500',
                   action: () => {
-                    navigator.clipboard.writeText('https://yunnan-gaokao.netlify.app').then(() => alert('链接已复制！可以直接粘贴到任何地方'));
+                    navigator.clipboard
+                      .writeText('https://yunnan-gaokao.netlify.app')
+                      .then(() => alert('链接已复制！可以直接粘贴到任何地方'));
                   },
                 },
                 {
@@ -335,7 +450,7 @@ function ResultContent() {
                   icon: '📱',
                   color: 'bg-indigo-500',
                   action: () => {
-                    const text = shareText(recommendations, input);
+                    const text = buildShareText(recommendations, input);
                     const smsUrl = `sms:?body=${encodeURIComponent(text + '\nyunnan-gaokao.netlify.app')}`;
                     window.open(smsUrl, '_blank');
                   },
@@ -346,7 +461,9 @@ function ResultContent() {
                   onClick={platform.action}
                   className="flex flex-col items-center gap-1.5"
                 >
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${platform.color} text-2xl shadow-md transition hover:scale-105 active:scale-95`}>
+                  <div
+                    className={`flex h-14 w-14 items-center justify-center rounded-2xl ${platform.color} text-2xl shadow-md transition hover:scale-105 active:scale-95`}
+                  >
                     {platform.icon}
                   </div>
                   <span className="text-xs text-gray-500">{platform.name}</span>
@@ -356,22 +473,35 @@ function ResultContent() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
-function shareText(recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] }, input: any): string {
-  const lines = [
+function buildShareText(
+  recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] },
+  input: { score: number; rank: number },
+): string {
+  return [
     `📊 【${input.score}分·${input.rank}名】高考志愿推荐方案`,
     '',
-    '🎯 冲刺：' + (recommendations.冲.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
-    '✅ 稳妥：' + (recommendations.稳.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
-    '🛡️ 保底：' + (recommendations.保.slice(0, 3).map((i: RecommendationItem) => i.school.name).join('、') || '无'),
+    '🎯 冲刺：' +
+      (recommendations.冲
+        .slice(0, 3)
+        .map((i: RecommendationItem) => i.school.name)
+        .join('、') || '无'),
+    '✅ 稳妥：' +
+      (recommendations.稳
+        .slice(0, 3)
+        .map((i: RecommendationItem) => i.school.name)
+        .join('、') || '无'),
+    '🛡️ 保底：' +
+      (recommendations.保
+        .slice(0, 3)
+        .map((i: RecommendationItem) => i.school.name)
+        .join('、') || '无'),
     '',
     '—— 来自【高考志愿AI助手】，免费生成你的方案：',
-  ];
-  return lines.join('\n');
+  ].join('\n');
 }
 
 export default function ResultPage() {
