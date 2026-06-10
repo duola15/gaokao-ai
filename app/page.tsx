@@ -58,7 +58,7 @@ export default function Home() {
             <div className="mb-3 text-3xl">📊</div>
             <h3 className="mb-2 text-lg font-semibold">数据全</h3>
             <p className="text-sm text-gray-500">
-              收录430+所高校在滇历年录取位次，1500+个专业数据，覆盖2017-2025年
+              收录2,200+所全国高校在滇历年录取位次，76,000+条专业数据，覆盖2017-2025年
             </p>
           </div>
           <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -114,7 +114,8 @@ export default function Home() {
           <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">📋 云南省招生考试院 ynzs.cn</a>
           <a href="https://gaokao.chsi.com.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">🎓 阳光高考网 gaokao.chsi.com.cn</a>
           <span>📚 各高校招生章程</span>
-          <span>📈 2017-2025年录取位次数据</span>
+          <span>📈 2021-2025年在滇录取位次</span>
+          <span>🏫 覆盖2,200+全国高校</span>
         </div>
         <p className="text-sm text-gray-400">
           数据从公开渠道收集整理，无法保证100%完整准确。请以官方最新发布为准。

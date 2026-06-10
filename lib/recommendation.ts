@@ -23,14 +23,21 @@ export function buildRecommendations(input: UserInput): {
 } {
   const allRecords = getAllAdmissionRecords();
 
-  // 仅取 2025 年数据做推荐（最新）
-  const records2025 = allRecords.filter((r) => r.year === 2025);
-
   // 筛选：同省份 + 同选科类别
-  const matched = records2025.filter(
+  let candidateRecords = allRecords.filter(
     (r) =>
       r.province_code === input.province &&
       r.subject_group === input.subject_group
+  );
+
+  // 取每所学校最新年份的数据（避免用过期数据推荐）
+  const schoolLatestYear = new Map<number, number>();
+  for (const r of candidateRecords) {
+    const cur = schoolLatestYear.get(r.school_id) || 0;
+    if (r.year > cur) schoolLatestYear.set(r.school_id, r.year);
+  }
+  const matched = candidateRecords.filter(
+    (r) => r.year === schoolLatestYear.get(r.school_id)
   );
 
   const results: RecommendationItem[] = [];
@@ -128,9 +135,11 @@ export function generateHistoricalSummary(
 ): string {
   const topItems = items.slice(0, 8); // 最多8所学校
   const schoolIds = new Set(topItems.map((i) => i.school.id));
-  // 仅保留 2023-2025 数据，进一步缩短
+  // 取近三年数据（最新可用年份）
+  const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a);
+  const recentYears = availableYears.slice(0, 3);
   const relevantRecords = allRecords.filter(
-    (r) => schoolIds.has(r.school_id) && r.year >= 2023
+    (r) => schoolIds.has(r.school_id) && recentYears.includes(r.year)
   );
 
   const lines: string[] = [];

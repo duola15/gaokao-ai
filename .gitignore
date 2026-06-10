@@ -44,6 +44,9 @@ yarn-error.log*
 /_gaokao_pro_repo/
 /data/extracted/
 
+# generated data files (regenerated from Excel via generate_comprehensive_seed.mjs)
+/public/data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
