@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { allSchools, getAllAdmissionRecords } from '@/lib/seed_data';
 import type { AdmissionRecord } from '@/lib/types';
 
@@ -11,6 +11,11 @@ export default function ComparePage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('全部');
   const [subjectFilter, setSubjectFilter] = useState<'全部' | '理工类' | '文史类'>('全部');
+  const compareRef = useRef<HTMLDivElement>(null);
+
+  const jumpToCompare = useCallback(() => {
+    compareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const allRecords = useMemo(() => getAllAdmissionRecords(), []);
 
@@ -129,7 +134,7 @@ export default function ComparePage() {
             </span>
           ))}
           {selectedIds.length >= 2 && (
-            <button onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}
+            <button onClick={jumpToCompare}
               className="ml-auto rounded-lg bg-blue-700 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-800">
               开始对比 ↓
             </button>
@@ -170,7 +175,7 @@ export default function ComparePage() {
 
       {/* ─── 对比表格 ─── */}
       {selectedSchools.length >= 2 && (
-        <div className="rounded-2xl bg-white shadow-sm">
+        <div ref={compareRef} className="rounded-2xl bg-white shadow-sm">
           <div className="border-b px-5 py-4">
             <h2 className="text-lg font-bold text-gray-800">📊 多维度对比</h2>
             <p className="mt-1 text-xs text-gray-400">
