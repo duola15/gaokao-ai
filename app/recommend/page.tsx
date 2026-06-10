@@ -32,7 +32,6 @@ export default function RecommendPage() {
     '外语/英语', '中文/历史', '哲学/社会学',
     '材料/化工', '环境/能源', '生物/食品',
   ];
-  const allCities = ['不限', ...cityOptions];
 
   const toggleArray = (arr: string[], setArr: (v: string[]) => void, value: string) => {
     if (arr.includes(value)) {
