@@ -12,6 +12,8 @@ interface Provider {
   models: string[];
   /** 图片生成模型（空数组 = 不支持） */
   imageModels: string[];
+  /** 视频生成模型（空数组 = 不支持） */
+  videoModels: string[];
   getKeys(): string[];
 }
 
@@ -21,6 +23,7 @@ const providers: Provider[] = [
     baseURL: 'https://apihub.agnes-ai.com/v1',
     models: ['agnes-2.0-flash'],
     imageModels: ['agnes-image-2.1-flash'],
+    videoModels: ['agnes-video-v2.0'],
     getKeys() {
       const ks: string[] = [];
       const k = process.env.AGNES_API_KEY;
@@ -33,6 +36,7 @@ const providers: Provider[] = [
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     models: ['gemini-2.5-flash', 'gemini-2.0-flash'],
     imageModels: [],
+    videoModels: [],
     getKeys() {
       const ks: string[] = [];
       const k1 = process.env.GEMINI_API_KEY;
@@ -218,4 +222,94 @@ export async function generateImage(
   }
 
   throw new Error('所有图片生成提供商均不可用');
+}
+
+/** 检查是否有视频生成能力 */
+export function canGenerateVideo(): boolean {
+  for (const p of providers) {
+    if (p.videoModels.length > 0 && p.getKeys().length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * AI 视频生成。
+ * 遍历 providers 找第一个支持 video 的。
+ * 注意：视频生成耗时较长（30-120s），Netlify 函数可能超时。
+ * 返回视频 URL 或抛错。
+ */
+export async function generateVideo(
+  prompt: string,
+): Promise<string> {
+  for (const p of providers) {
+    if (p.videoModels.length === 0) continue;
+    const keys = p.getKeys();
+    if (keys.length === 0) continue;
+
+    const apiKey = keys[0];
+    const model = p.videoModels[0];
+    const label = `[${p.name}] ${model}`;
+    const endpoint = `${p.baseURL}/videos/generations`;
+
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 90000); // 视频给 90s
+
+      console.log(`[Video] 请求 ${label}...`);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+        }),
+        signal: ctrl.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.log(`[Video] ❌ ${label}: HTTP ${response.status} ${text.slice(0, 200)}`);
+        continue;
+      }
+
+      const data = await response.json();
+      // 尝试多种返回格式
+      const url = data?.data?.[0]?.url || data?.url || data?.video_url;
+      if (url) {
+        console.log(`[Video] ✅ ${label}`);
+        return url;
+      }
+      // 可能是异步任务，返回 task_id
+      const taskId = data?.data?.[0]?.task_id || data?.task_id || data?.id;
+      if (taskId) {
+        console.log(`[Video] 异步任务 ${taskId}，等待完成...`);
+        const pollUrl = `${p.baseURL}/videos/generations/${taskId}`;
+        for (let i = 0; i < 20; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const pollRes = await fetch(pollUrl, {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+          });
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            const videoUrl = pollData?.data?.[0]?.url || pollData?.url || pollData?.video_url;
+            if (videoUrl) {
+              console.log(`[Video] ✅ ${label} (async)`);
+              return videoUrl;
+            }
+          }
+        }
+        console.log(`[Video] ❌ ${label}: 轮询超时`);
+      }
+    } catch (err: any) {
+      console.log(`[Video] ❌ ${label}: ${err?.message || err}`);
+    }
+  }
+
+  throw new Error('所有视频生成提供商均不可用');
 }
