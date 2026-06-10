@@ -8,7 +8,10 @@
 // 共 350 所学校，1171 条录取记录
 // 历史数据含2021/2022/2023真实年份，2025来自gaokao.db
 
+// 补充数据: gkvr_system + visionsss (88所云南本地学校 + 391条专业录取记录 2017-2022)
+
 import { School, AdmissionRecord } from './types';
+import { EXTRA_SCHOOLS, EXTRA_RECORDS } from './seed_data_extra';
 
 export const yunnanSchools: School[] = [
   { id: 1, name: '浙江大学', city: '杭州', province_code: 'yunnan', school_type: '985', website: '', description: '["综合实力强","C9联盟","杭州区位优势","学科齐全"]' },
@@ -1588,6 +1591,13 @@ export async function rankToScore(rank: number, track: 'physics' | 'history' = '
   return entries[entries.length - 1][0] || 180;
 }
 
-// 兼容旧导出
-export const hubeiSchools = yunnanSchools;
-export const getHubeiAdmissionRecords = getYunnanAdmissionRecords;
+// 合并额外数据源（gkvr_system + visionsss）
+export const allSchools: School[] = [...yunnanSchools, ...EXTRA_SCHOOLS];
+
+export function getAllAdmissionRecords(): AdmissionRecord[] {
+  return [...getYunnanAdmissionRecords(), ...EXTRA_RECORDS];
+}
+
+// 兼容旧导出（包含新数据）
+export const hubeiSchools = allSchools;
+export const getHubeiAdmissionRecords = getAllAdmissionRecords;

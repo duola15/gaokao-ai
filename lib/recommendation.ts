@@ -1,5 +1,5 @@
 import { AdmissionRecord, RecommendationItem, RecommendationTier, School, UserInput } from './types';
-import { getYunnanAdmissionRecords, yunnanSchools } from './seed_data';
+import { getAllAdmissionRecords, allSchools } from './seed_data';
 
 /** 解析学校 description JSON 字符串为标签数组 */
 export function parseDescription(desc: string): string[] {
@@ -21,7 +21,7 @@ export function buildRecommendations(input: UserInput): {
   保: RecommendationItem[];
   allRecords: AdmissionRecord[];
 } {
-  const allRecords = getYunnanAdmissionRecords();
+  const allRecords = getAllAdmissionRecords();
 
   // 仅取 2025 年数据做推荐（最新）
   const records2025 = allRecords.filter((r) => r.year === 2025);
@@ -36,7 +36,7 @@ export function buildRecommendations(input: UserInput): {
   const results: RecommendationItem[] = [];
 
   for (const record of matched) {
-    const school = yunnanSchools.find((s) => s.id === record.school_id);
+    const school = allSchools.find((s) => s.id === record.school_id);
     if (!school) continue;
 
     // 计算位次差：学校平均录取位次 - 考生位次

@@ -1,20 +1,20 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { yunnanSchools, getYunnanAdmissionRecords } from '@/lib/seed_data';
+import { allSchools, getAllAdmissionRecords } from '@/lib/seed_data';
 
 export default function ComparePage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [search, setSearch] = useState('');
 
-  const allRecords = getYunnanAdmissionRecords();
+  const allRecords = getAllAdmissionRecords();
 
   // 搜索过滤
   const filteredSchools = useMemo(() => {
-    if (!search.trim()) return yunnanSchools;
+    if (!search.trim()) return allSchools;
     const q = search.toLowerCase();
-    return yunnanSchools.filter(
+    return allSchools.filter(
       s => s.name.toLowerCase().includes(q) || s.city.toLowerCase().includes(q) || s.school_type.toLowerCase().includes(q)
     );
   }, [search]);
@@ -27,7 +27,7 @@ export default function ComparePage() {
     }
   };
 
-  const selectedSchools = yunnanSchools.filter((s) => selectedIds.includes(s.id));
+  const selectedSchools = allSchools.filter((s) => selectedIds.includes(s.id));
 
   return (
     <div className="page-enter pb-8">

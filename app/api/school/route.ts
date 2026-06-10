@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chat } from '@/lib/deepseek';
 import { fillPrompt, SCHOOL_ANALYSIS_PROMPT } from '@/lib/prompts';
-import { yunnanSchools, getYunnanAdmissionRecords } from '@/lib/seed_data';
+import { allSchools, getAllAdmissionRecords } from '@/lib/seed_data';
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
@@ -10,12 +10,12 @@ export async function GET(req: NextRequest) {
   }
 
   const schoolId = Number(id);
-  const school = yunnanSchools.find((s) => s.id === schoolId);
+  const school = allSchools.find((s) => s.id === schoolId);
   if (!school) {
     return NextResponse.json({ error: '学校不存在' }, { status: 404 });
   }
 
-  const allRecords = getYunnanAdmissionRecords();
+  const allRecords = getAllAdmissionRecords();
   const schoolRecords = allRecords
     .filter((r) => r.school_id === schoolId)
     .sort((a, b) => b.year - a.year);
