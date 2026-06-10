@@ -1,6 +1,6 @@
 # 高考志愿AI助手 - 项目记忆
 
-> 最后更新：2026-06-10 | 每次对话后自动更新
+> 最后更新：2026-06-10 (第3次更新) | 每次对话后自动更新
 
 ---
 
@@ -24,12 +24,15 @@
 - 推荐算法工作正常（冲/稳/保各10条，位次差匹配）
 - 首页 CTA
 
-### ✅ 2026-06-10 改动
-- AI 后端从 DeepSeek → Google Gemini 免费版（`gemini-2.5-flash`，1500次/天，OpenAI 兼容）
-- ¥49 付费引导 → ☕ 爱发电赞助（自愿支持，不影响功能）
-- 首页去掉虚假用户数（"12,836位"），改为"数据来源：云南省招生考试院"
-- 页脚添加爱发电链接
-- 部署平台从 Vercel → Netlify（`@netlify/plugin-nextjs` v5）
+### ✅ 2026-06-10 终极优化（第3次对话）
+- 城市列表数据化：提取350所学校76城，云南优先，表单支持搜索/展开
+- 选科预设：10组快捷组合（物化生/物化地/史地政等）
+- AI修复：6校5条硬截断 + 6000字保底防token溢出 + 错误消息暴露
+- 学校描述标签化：JSON解析为彩色标签（`parseDescription()`）
+- 对比页重写：搜索350所学校 + 多维度对比表
+- 分享面板：微信/朋友圈/QQ/QQ空间/微博/小红书/复制/短信 8平台
+- CSS动画规范化（`style jsx`→globals.css）
+- 构建验证通过（next build 成功）
 
 ### ⚠️ 待解决
 - **爱发电用户名**: 代码里 `your_username` 需替换为真实用户名（`result/page.tsx` + `layout.tsx` 各一处）
@@ -115,9 +118,10 @@ HA7CH/gaokao-pro（~1k stars）、Royelau76/gaokao-decision-system-BK-（~100 st
 ### 核心库
 - `lib/types.ts` — 类型定义（School, AdmissionRecord, UserInput, RecommendationItem 等）
 - `lib/seed_data.ts` — 核心数据文件（433KB，350校/1,171条记录）
-- `lib/recommendation.ts` — 推荐算法（rank_diff 阈值 ±2000 分类冲/稳/保）
-- `lib/deepseek.ts` — DeepSeek API（懒加载，hasApiKey() 检查）
-- `lib/prompts.ts` — AI Prompt 模板
+- `lib/recommendation.ts` — 推荐算法 + `parseDescription()` JSON标签解析
+- `lib/deepseek.ts` — Gemini API 封装（OpenAI兼容，懒加载）
+- `lib/prompts.ts` — AI Prompt 模板（六段式详细分析）
+- `lib/city_data.ts` — 城市数据（从350校提取76城，云南优先）
 
 ### 数据脚本
 - `scripts/generate_seed_from_db.js` — SQLite → seed_data.ts（原始版，仅 gaokao.db）
