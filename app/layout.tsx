@@ -51,7 +51,7 @@ export default function RootLayout({
             ⚠️ 本工具提供的数据和分析仅供参考，不构成录取承诺
           </p>
           <p className="mt-1">
-            ☕ <a href="https://afdian.com/a/your_username" target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:underline">爱发电支持作者</a>
+            ☕ <a href="https://afdian.com/a/gaokao-ai" target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:underline">爱发电支持作者</a>
           </p>
           <p className="mt-2 text-xs text-gray-400">
             志愿填报决策请以官方发布信息为准

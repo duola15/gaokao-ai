@@ -212,7 +212,7 @@ function ResultContent() {
           这个工具完全免费，数据来源公开可查。如果帮到了你，欢迎支持一下
         </p>
         <a
-          href="https://afdian.com/a/your_username"
+          href="https://afdian.com/a/gaokao-ai"
           target="_blank"
           rel="noopener noreferrer"
           className="mt-4 inline-block rounded-full bg-white px-8 py-3 font-bold text-orange-600 shadow-md transition hover:scale-105 active:scale-95"
