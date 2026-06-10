@@ -1,16 +1,17 @@
 import OpenAI from 'openai';
 
-const CALL_TIMEOUT_MS = 5000; // 单次调用超时 5s
+const CALL_TIMEOUT_MS = 8000; // 单次调用超时 8s（图片生成更慢）
 
 // ─── 提供商定义 ────────────────────────────────────
 // 优先级 = 数组顺序，AgnesAI 优先（完全免费无限量）
-// 格式: { name, baseURL, models, envKeys }
 
 interface Provider {
   name: string;
   baseURL: string;
+  /** 文本模型列表 */
   models: string[];
-  /** 从环境变量收集 key */
+  /** 图片生成模型（空数组 = 不支持） */
+  imageModels: string[];
   getKeys(): string[];
 }
 
@@ -19,6 +20,7 @@ const providers: Provider[] = [
     name: 'AgnesAI',
     baseURL: 'https://apihub.agnes-ai.com/v1',
     models: ['agnes-2.0-flash'],
+    imageModels: ['agnes-image-2.1-flash'],
     getKeys() {
       const ks: string[] = [];
       const k = process.env.AGNES_API_KEY;
@@ -30,6 +32,7 @@ const providers: Provider[] = [
     name: 'Gemini',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     models: ['gemini-2.5-flash', 'gemini-2.0-flash'],
+    imageModels: [],
     getKeys() {
       const ks: string[] = [];
       const k1 = process.env.GEMINI_API_KEY;
@@ -158,4 +161,61 @@ export async function chatStream(messages: { role: string; content: string }[]) 
     });
   }
   throw new Error('未配置任何 API Key');
+}
+
+/** 检查是否有图片生成能力 */
+export function canGenerateImage(): boolean {
+  for (const p of providers) {
+    if (p.imageModels.length > 0 && p.getKeys().length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * AI 图片生成。
+ * 遍历 providers 找第一个支持 image 的，默认 1024×1024。
+ * 返回 base64 data URL 或抛错。
+ */
+export async function generateImage(
+  prompt: string,
+  size: '1024x1024' | '768x1024' = '1024x1024',
+): Promise<string> {
+  for (const p of providers) {
+    if (p.imageModels.length === 0) continue;
+    const keys = p.getKeys();
+    if (keys.length === 0) continue;
+
+    const client = getClient(p.baseURL, keys[0]);
+    const model = p.imageModels[0];
+    const label = `[${p.name}] ${model}`;
+
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000); // 图片生成给 15s
+
+      const response = await client.images.generate(
+        { model, prompt, n: 1, size, response_format: 'b64_json' as any },
+        { signal: ctrl.signal },
+      );
+
+      clearTimeout(timer);
+      const b64 = (response as any)?.data?.[0]?.b64_json;
+      if (b64) {
+        console.log(`[Image] ✅ ${label}`);
+        return `data:image/png;base64,${b64}`;
+      }
+      // 可能返回 url
+      const url = (response as any)?.data?.[0]?.url;
+      if (url) {
+        console.log(`[Image] ✅ ${label} (url)`);
+        return url;
+      }
+      throw new Error('图片生成返回空');
+    } catch (err: any) {
+      console.log(`[Image] ❌ ${label}: ${err?.message || err}`);
+      // 试下一个 provider
+    }
+  }
+
+  throw new Error('所有图片生成提供商均不可用');
 }

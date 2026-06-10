@@ -35,6 +35,12 @@ function ResultContent() {
   const [activeTab, setActiveTab] = useState<'冲' | '稳' | '保'>('稳');
   const [showShare, setShowShare] = useState(false);
 
+  // 海报生成
+  const [posterUrl, setPosterUrl] = useState('');
+  const [loadingPoster, setLoadingPoster] = useState(false);
+  const [posterError, setPosterError] = useState('');
+  const [showPoster, setShowPoster] = useState(false);
+
   // 请求 AI 分析
   const fetchAi = useCallback(
     async (params: Record<string, string>) => {
@@ -65,6 +71,42 @@ function ResultContent() {
     },
     [],
   );
+
+  // 生成分享海报
+  const generatePoster = useCallback(async () => {
+    if (!result) return;
+    setLoadingPoster(true);
+    setPosterError('');
+    setShowPoster(true);
+
+    // 构建摘要供 AI 生成图片
+    const summary = [
+      `🎯 冲刺：${result.recommendations.冲.slice(0, 3).map((i) => i.school.name).join('、') || '无'}`,
+      `✅ 稳妥：${result.recommendations.稳.slice(0, 3).map((i) => i.school.name).join('、') || '无'}`,
+      `🛡️ 保底：${result.recommendations.保.slice(0, 3).map((i) => i.school.name).join('、') || '无'}`,
+    ].join('\n');
+
+    try {
+      const res = await fetch('/api/poster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score: result.input.score,
+          rank: result.input.rank,
+          province: result.input.province,
+          subject_group: result.input.subject_group,
+          tier_summary: summary,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '海报生成失败');
+      setPosterUrl(data.imageUrl);
+    } catch (err: any) {
+      setPosterError(err?.message || '海报生成失败，请稍后重试');
+    } finally {
+      setLoadingPoster(false);
+    }
+  }, [result]);
 
   useEffect(() => {
     const params: Record<string, string> = {};
@@ -365,6 +407,17 @@ function ResultContent() {
             </div>
             <p className="mb-5 text-sm text-gray-400">把志愿推荐结果分享给家人一起参考</p>
 
+            {/* 海报生成入口 */}
+            <button
+              onClick={() => {
+                setShowShare(false);
+                generatePoster();
+              }}
+              className="mb-4 w-full rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 py-3.5 text-center font-semibold text-white shadow-md transition hover:scale-[1.02] active:scale-95"
+            >
+              📸 生成分享海报（精美图片）
+            </button>
+
             <div className="grid grid-cols-4 gap-4">
               {[
                 {
@@ -470,6 +523,109 @@ function ResultContent() {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 海报预览弹窗 */}
+      {showPoster && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowPoster(false)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-800">📸 分享海报</h3>
+              <button
+                onClick={() => setShowPoster(false)}
+                className="text-xl text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 加载中 */}
+            {loadingPoster && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <svg className="mb-4 h-10 w-10 animate-spin text-purple-500" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <p className="font-medium text-gray-600">AI 正在生成精美海报...</p>
+                <p className="mt-1 text-sm text-gray-400">预计 5-10 秒</p>
+              </div>
+            )}
+
+            {/* 失败 */}
+            {!loadingPoster && posterError && (
+              <div className="py-8 text-center">
+                <p className="mb-4 text-red-500">{posterError}</p>
+                <button
+                  onClick={generatePoster}
+                  className="rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-medium text-white"
+                >
+                  🔄 重新生成
+                </button>
+              </div>
+            )}
+
+            {/* 海报图片 */}
+            {!loadingPoster && posterUrl && (
+              <div>
+                <img
+                  src={posterUrl}
+                  alt="志愿推荐海报"
+                  className="w-full rounded-xl shadow-md"
+                />
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const blob = await (await fetch(posterUrl)).blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `高考志愿推荐_${result!.input.score}分_${result!.input.rank}名.png`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        alert('下载失败，请长按图片保存');
+                      }
+                    }}
+                    className="flex-1 rounded-xl bg-blue-600 py-3 text-center font-medium text-white"
+                  >
+                    💾 保存图片
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (navigator.share) {
+                        fetch(posterUrl)
+                          .then((r) => r.blob())
+                          .then((blob) => {
+                            const file = new File([blob], 'gaokao-poster.png', { type: 'image/png' });
+                            navigator.share({
+                              title: '我的高考志愿推荐方案',
+                              text: `${result!.input.score}分·第${result!.input.rank}名 志愿推荐`,
+                              files: [file],
+                            }).catch(() => {});
+                          });
+                      } else {
+                        alert('请长按图片保存后分享');
+                      }
+                    }}
+                    className="flex-1 rounded-xl bg-green-600 py-3 text-center font-medium text-white"
+                  >
+                    📤 直接分享
+                  </button>
+                </div>
+                <p className="mt-2 text-center text-xs text-gray-400">
+                  💡 也可以长按图片保存到相册
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
