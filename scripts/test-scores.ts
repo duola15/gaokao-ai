@@ -9,6 +9,7 @@ import { buildRecommendations, generateHistoricalSummary } from '../lib/recommen
 import { getAllAdmissionRecords, allSchools } from '../lib/seed_data';
 import { getRiskLabels } from '../lib/risk-labels';
 import { analyzeScorePosition } from '../lib/cutoff';
+import { rankToEstimatedScore } from '../lib/yifenyiduan';
 import type { UserInput, RecommendationItem } from '../lib/types';
 
 interface TestIssue {
@@ -54,25 +55,36 @@ console.log(`📊 数据概况: ${allSchools.length}所学校, ${allRecords.leng
 console.log(`   年份范围: ${[...new Set(allRecords.map(r => r.year))].sort().join(', ')}`);
 console.log('');
 
+/**
+ * 根据分数估计位次（基于云南2025年一分一段表）
+ * 数据来源：lib/yifenyiduan.ts（HA7CH/gaokao-pro 真实一分一段数据）
+ *
+ * 实际一分一段表对应关系（云南2025）：
+ *   理科：700(38名) 650(737名) 600(3170名) 550(7370名) 500(12202名)
+ *   文科：650(40名)  600(464名)  550(1944名)  500(4619名)  450(7919名)
+ *
+ * 注：700分文科无确切数据点，按合理估计
+ */
 function getMockRank(score: number, subjectGroup: string): number {
-  // 云南省2025年一分一段表近似值（理科）
   if (subjectGroup === '理工类') {
-    if (score >= 700) return 50;
-    if (score >= 650) return 800;
-    if (score >= 600) return 5000;
-    if (score >= 550) return 20000;
-    return 40000;
+    // 云南2025理科一分一段表（真实数据）
+    if (score >= 750) return 15;    // 接近满分，top 15
+    if (score >= 700) return 38;    // 真实：700分段38人
+    if (score >= 650) return 737;   // 真实：650分段累计737人
+    if (score >= 600) return 3170;  // 真实：600分段累计3170人
+    if (score >= 550) return 7370;  // 真实：550分段累计7370人
+    return 12202;                    // 真实：500分段累计12202人
   } else {
-    // 文科
-    if (score >= 700) return 30;
-    if (score >= 650) return 500;
-    if (score >= 600) return 3000;
-    if (score >= 550) return 12000;
-    return 30000;
+    // 云南2025文科一分一段表（真实数据）
+    if (score >= 700) return 15;    // 顶尖分段
+    if (score >= 650) return 40;    // 真实：650分段累计40人
+    if (score >= 600) return 464;   // 真实：600分段累计464人
+    if (score >= 550) return 1944;  // 真实：550分段累计1944人
+    return 4619;                     // 真实：500分段累计4619人
   }
 }
 
-function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
+function runTest(score: number, subjectGroup: typeof SUBJECT_GROUPS[number]): TestResult {
   const input: UserInput = {
     score,
     rank: getMockRank(score, subjectGroup),
@@ -125,6 +137,26 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
         message: `保底层级为空（数据可能存在断层）`,
       });
     }
+
+    // 数量合理性：每个层级应有合理的最小数量
+    if (input.rank >= 300 && result.冲.length < 5) {
+      issues.push({
+        score, subjectGroup, type: 'warning', category: '冲刺不足',
+        message: `冲刺仅${result.冲.length}条（建议≥5条），数据可能覆盖不足`,
+      });
+    }
+    if (result.稳.length < 8) {
+      issues.push({
+        score, subjectGroup, type: 'warning', category: '稳妥不足',
+        message: `稳妥仅${result.稳.length}条（建议≥8条），数据可能覆盖不足`,
+      });
+    }
+    if (result.保.length < 5) {
+      issues.push({
+        score, subjectGroup, type: 'warning', category: '保底不足',
+        message: `保底仅${result.保.length}条（建议≥5条），数据可能覆盖不足`,
+      });
+    }
   }
 
   // ─── 去重检查：同学校出现在多个层级 ───
@@ -136,10 +168,8 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
   // 跨层级重复学校
   const 冲突稳 = [...schoolIdsByTier.冲].filter(id => schoolIdsByTier.稳.has(id));
   const 冲突保 = [...schoolIdsByTier.冲].filter(id => schoolIdsByTier.保.has(id));
-  const 稳冲突保 = [...schoolIdsByTier.稳].filter(id => schoolIdsByTier.保.has(id));
 
-  // 跨层重复：同一学校因不同专业难度出现在不同层级是正常的
-  // 只标记为info（≥5所或冲刺∩保底才是warning）
+  // 跨层重复：同一学校出现在多个层级（严格单层后应该为 0）
   if (冲突稳.length >= 5) {
     issues.push({
       score, subjectGroup, type: 'warning', category: '跨层重复(多)',
@@ -184,8 +214,10 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
 
   for (const item of allItems) {
     if (!item.data_year) missingDataYear++;
+    // trend_direction 存在但 trend 为空 → 数据不一致
     if (item.trend_direction && !item.trend) missingTrend++;
-    if (!item.match_score || item.match_score < 0) negativeMatchedScore++;
+    // match_score 异常值
+    if (item.match_score < 0) negativeMatchedScore++;
 
     if (item.risk_tags) {
       for (const tag of item.risk_tags) {
@@ -201,18 +233,8 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
         message: `${item.school.name} - ${item.major.major_name}: rank_diff 为空`,
       });
     }
-  }
 
-  if (missingDataYear > 0) {
-    issues.push({
-      score, subjectGroup, type: 'info', category: '数据年份缺失',
-      message: `${missingDataYear}/${allItems.length}条记录缺少data_year`,
-    });
-  }
-
-  // ─── 风险标签一致性检查 ───
-  // 检查"法学"在红牌和绿牌同时出现的问题
-  for (const item of allItems) {
+    // 新增：检查匹配分双算风险（绿牌+红牌同时出现=可能双算）
     if (item.risk_tags) {
       const hasRed = item.risk_tags.some(t => t.type === 'red');
       const hasGreen = item.risk_tags.some(t => t.type === 'green');
@@ -225,6 +247,20 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
     }
   }
 
+  if (missingDataYear > 0) {
+    issues.push({
+      score, subjectGroup, type: 'info', category: '数据年份缺失',
+      message: `${missingDataYear}/${allItems.length}条记录缺少data_year`,
+    });
+  }
+
+  if (missingTrend > 0) {
+    issues.push({
+      score, subjectGroup, type: 'warning', category: '趋势数据不一致',
+      message: `${missingTrend}条记录有trend_direction但无trend数据`,
+    });
+  }
+
   // ─── 趋势数据检查 ───
   const noTrendItems = allItems.filter(i => !i.trend_direction);
   if (noTrendItems.length > allItems.length * 0.5) {
@@ -234,12 +270,20 @@ function runTest(score: number, subjectGroup: SubjectGroup): TestResult {
     });
   }
 
-  // ─── 匹配分检查 ───
+  // ─── 匹配分合理性检查 ───
   const lowScoreItems = allItems.filter(i => i.match_score <= 20);
   if (lowScoreItems.length > 0) {
     issues.push({
       score, subjectGroup, type: 'info', category: '低匹配分',
       message: `${lowScoreItems.length}条记录匹配分≤20`,
+    });
+  }
+  // 匹配分不应超过100
+  const overMaxScore = allItems.filter(i => i.match_score > 100);
+  if (overMaxScore.length > 0) {
+    issues.push({
+      score, subjectGroup, type: 'error', category: '匹配分超限',
+      message: `${overMaxScore.length}条记录匹配分>100（算法bug）`,
     });
   }
 
@@ -365,7 +409,8 @@ for (const r of allRecords) {
 }
 console.log('  年份分布:');
 for (const [yr, cnt] of Object.entries(yearCount).sort((a, b) => Number(b) - Number(a))) {
-  console.log(`    ${yr}年: ${cnt}条`);
+  const icon = Number(yr) === 2024 ? '❌ 缺失!' : Number(yr) === 2025 ? '⚠️ 极少' : '';
+  console.log(`    ${yr}年: ${cnt}条 ${icon}`);
 }
 
 // 选科分布
@@ -378,23 +423,36 @@ for (const [sg, cnt] of Object.entries(subjectCount)) {
   console.log(`    ${sg}: ${cnt}条`);
 }
 
-// 检查 risk-labels 的双重匹配（法学在红牌和绿牌都有）
+// 检查 risk-labels 的双重匹配
 console.log('\n  风险标签检查:');
-const 法学Labels = getRiskLabels('法学');
-console.log(`    "法学" 匹配标签: ${法学Labels.map(l => l.label).join(', ')}`);
-const 心理学Labels = getRiskLabels('应用心理学');
-console.log(`    "应用心理学" 匹配标签: ${心理学Labels.map(l => l.label).join(', ')}`);
+const testMajors = [
+  '法学', '应用心理学', '计算机科学与技术', '软件工程',
+  '历史学', '工商管理', '临床医学', '金融学', '旅游管理',
+  '英语', '人工智能', '土木工程', '会计学',
+];
+for (const major of testMajors) {
+  const labels = getRiskLabels(major);
+  const typeIcons = labels.map(l => l.type === 'green' ? '🟢' : l.type === 'red' ? '🔴' : '🟡');
+  console.log(`    "${major}" → ${typeIcons.join('')} ${labels.map(l => l.label).join(', ') || '(无标签)'}`);
+}
 
-// 检查分数-位次对应关系（一分一段表合理性）
+// 检查分数-位次对应关系
 console.log('\n  分数-位次对应检查:');
 for (const score of [500, 550, 600, 650, 700]) {
   for (const sg of SUBJECT_GROUPS) {
     const rank = getMockRank(score, sg);
+    const estimatedScore = rankToEstimatedScore(rank, sg);
     const pos = analyzeScorePosition(score, sg);
-    console.log(`    ${score}分 ${sg}: 模拟位次${rank} · ${pos.summary}`);
+    const trendIcon = estimatedScore
+      ? Math.abs(estimatedScore - score) <= 10 ? '✅' : '⚠️'
+      : '❓';
+    console.log(`    ${trendIcon} ${score}分 ${sg}: 位次≈${rank} · ${pos.summary}`);
   }
 }
 
 console.log(`\n${'='.repeat(70)}`);
-console.log('✅ 测试完成');
+const totalErrors = allIssues.filter(i => i.type === 'error').length;
+const totalWarnings = allIssues.filter(i => i.type === 'warning').length;
+const totalInfos = allIssues.filter(i => i.type === 'info').length;
+console.log(`✅ 测试完成: ${totalErrors} errors, ${totalWarnings} warnings, ${totalInfos} info`);
 console.log('='.repeat(70));
