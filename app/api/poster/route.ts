@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateImage, canGenerateImage } from '@/lib/deepseek';
+import { checkRateLimit, getClientIP, RATE_LIMIT_CONFIG } from '@/lib/rate-limit';
 
 /**
  * POST /api/poster
@@ -7,6 +8,20 @@ import { generateImage, canGenerateImage } from '@/lib/deepseek';
  */
 export async function POST(req: NextRequest) {
   try {
+    // 限流检查（图片生成最贵）
+    const ip = getClientIP(req);
+    const { allowed } = checkRateLimit(
+      `poster:${ip}`,
+      RATE_LIMIT_CONFIG.poster.max,
+      RATE_LIMIT_CONFIG.poster.windowMs,
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        { error: '海报生成过于频繁，请稍后再试（每分钟5次）' },
+        { status: 429 },
+      );
+    }
+
     const body = await req.json();
     const { score, rank, province, subject_group, tier_summary } = body;
 

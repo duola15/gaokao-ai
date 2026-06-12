@@ -3,8 +3,12 @@
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import type { RecommendationItem } from '@/lib/types';
-import { parseDescription } from '@/lib/recommendation';
 import Link from 'next/link';
+import TierCard from '@/components/TierCard';
+import SharePanel from '@/components/SharePanel';
+import PosterModal from '@/components/PosterModal';
+import VideoModal from '@/components/VideoModal';
+import AIAnalysisPanel from '@/components/AIAnalysisPanel';
 
 interface ResultData {
   input: {
@@ -41,22 +45,25 @@ function ResultContent() {
   const [activeTab, setActiveTab] = useState<'冲' | '稳' | '保'>('稳');
   const [showShare, setShowShare] = useState(false);
 
+  // 对比列表（用于结果页→对比页跳转）
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+
   // 海报
   const [posterUrl, setPosterUrl] = useState('');
   const [loadingPoster, setLoadingPoster] = useState(false);
   const [posterError, setPosterError] = useState('');
   const [showPoster, setShowPoster] = useState(false);
 
-  // 视频
+  // 视频（异步轮询模式）
   const [videoUrl, setVideoUrl] = useState('');
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [videoError, setVideoError] = useState('');
+  const [pollingStatus, setPollingStatus] = useState('');
   const [showVideo, setShowVideo] = useState(false);
-
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── 流式 AI 分析 ───
   const fetchAi = useCallback(async (params: Record<string, string>) => {
-    // Abort previous
     aiAbortRef.current?.abort();
     const ctrl = new AbortController();
     aiAbortRef.current = ctrl;
@@ -83,7 +90,6 @@ function ResultContent() {
 
       if (!res.ok) throw new Error('AI 请求失败');
 
-      // SSE 流式读取
       const reader = res.body?.getReader();
       if (!reader) throw new Error('不支持流式');
 
@@ -110,7 +116,8 @@ function ResultContent() {
                 setAiAnalysis(accumulated);
               }
               if (parsed.error) {
-                setAiError(parsed.error);
+                // 保留已接收的文字，只显示错误提示
+                if (!accumulated) setAiError(parsed.error);
               }
             } catch {
               // 跳过非法 JSON 行
@@ -119,8 +126,7 @@ function ResultContent() {
         }
       }
 
-      // 流结束，如果没有任何内容
-      if (!accumulated) {
+      if (!accumulated && !aiError) {
         setAiAnalysis(`⚠️ AI 返回为空。\n\n推荐结果基于位次差算法生成，比 AI 分析更准确可靠。\n\n💡 请以云南省招生考试院(ynzs.cn)和阳光高考网(gaokao.chsi.com.cn)官方数据为准。`);
       }
     } catch (err: any) {
@@ -132,7 +138,7 @@ function ResultContent() {
     }
   }, []);
 
-  // 生成分享海报（集成AI分析结果）
+  // 生成分享海报
   const generatePoster = useCallback(async () => {
     if (!result) return;
     setLoadingPoster(true);
@@ -167,11 +173,13 @@ function ResultContent() {
     }
   }, [result]);
 
-  // 生成短视频
+  // 生成短视频（异步轮询模式）
   const generateVideoMedia = useCallback(async () => {
     if (!result) return;
     setLoadingVideo(true);
     setVideoError('');
+    setVideoUrl('');
+    setPollingStatus('正在提交生成任务...');
     setShowVideo(true);
 
     const summary = [
@@ -181,6 +189,7 @@ function ResultContent() {
     ].join('\n');
 
     try {
+      // 提交视频生成任务
       const res = await fetch('/api/video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -194,13 +203,64 @@ function ResultContent() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '视频生成失败');
-      setVideoUrl(data.videoUrl);
+
+      const taskId = data.taskId;
+      setPollingStatus('AI正在生成视频中...');
+
+      // 轮询任务状态
+      let pollCount = 0;
+      const maxPolls = 40; // 最多轮询120秒
+      pollTimerRef.current = setInterval(async () => {
+        pollCount++;
+        try {
+          const pollRes = await fetch(`/api/video?taskId=${taskId}`);
+          const pollData = await pollRes.json();
+
+          if (pollData.status === 'done' && pollData.videoUrl) {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            setVideoUrl(pollData.videoUrl);
+            setLoadingVideo(false);
+            setPollingStatus('');
+          } else if (pollData.status === 'error') {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            setVideoError(pollData.error || '视频生成失败');
+            setLoadingVideo(false);
+            setPollingStatus('');
+          } else if (pollCount >= maxPolls) {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            setVideoError('视频生成超时，请稍后重试');
+            setLoadingVideo(false);
+            setPollingStatus('');
+          } else {
+            setPollingStatus(`AI正在生成视频...(${pollCount * 3}秒)`);
+          }
+        } catch {
+          // 网络错误不中断轮询
+        }
+      }, 3000);
     } catch (err: any) {
       setVideoError(err?.message || '视频生成失败（可能需要较长时间），请稍后重试');
-    } finally {
       setLoadingVideo(false);
     }
   }, [result]);
+
+  // 清理轮询
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
+
+  // 切换对比
+  const toggleCompare = useCallback((schoolId: number) => {
+    setCompareIds(prev =>
+      prev.includes(schoolId)
+        ? prev.filter(id => id !== schoolId)
+        : prev.length < 5
+          ? [...prev, schoolId]
+          : prev
+    );
+  }, []);
 
   useEffect(() => {
     const params: Record<string, string> = {};
@@ -223,19 +283,22 @@ function ResultContent() {
             },
           }),
         });
-        if (!res.ok) throw new Error('请求失败');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `请求失败(${res.status})`);
+        }
         const data: ResultData = await res.json();
         setResult(data);
         setLoadingRecs(false);
         fetchAi(params);
-      } catch (err) {
-        setRecError('数据加载失败，请返回重试');
+      } catch (err: any) {
+        setRecError(err?.message || '数据加载失败，请返回重试');
         setLoadingRecs(false);
       }
     })();
   }, [searchParams, fetchAi]);
 
-  // Loading
+  // ─── Loading ───
   if (loadingRecs) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center">
@@ -244,11 +307,12 @@ function ResultContent() {
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
         <p className="text-lg font-semibold text-gray-700">正在检索录取数据...</p>
-        <p className="mt-2 text-sm text-gray-400">基于历年公开录取位次</p>
+        <p className="mt-2 text-sm text-gray-400">基于历年公开录取位次 · 2,200+所全国高校</p>
       </div>
     );
   }
 
+  // ─── Error ───
   if (recError || !result) {
     return (
       <div className="mt-20 text-center">
@@ -280,8 +344,12 @@ function ResultContent() {
         <h1 className="text-2xl font-extrabold text-gray-800 sm:text-3xl">你的志愿方案</h1>
         <p className="mt-1 text-gray-500">
           分数 <strong className="text-blue-600">{input.score}</strong> · 位次{' '}
-          <strong className="text-blue-600">{input.rank}</strong> · 偏好{' '}
+          <strong className="text-blue-600">{input.rank.toLocaleString()}</strong> · 偏好{' '}
           {input.preferences.major_direction || '不限'}
+          {' · '}
+          <span className="text-xs text-gray-400">
+            共{recommendations.冲.length + recommendations.稳.length + recommendations.保.length}条推荐
+          </span>
         </p>
         {result.cutoff && (
           <div
@@ -319,62 +387,62 @@ function ResultContent() {
         {activeTier.data.length === 0 && (
           <div className="rounded-2xl bg-white p-8 text-center text-gray-400">
             暂无{activeTab === '冲' ? '冲刺' : activeTab === '稳' ? '稳妥' : '保底'}推荐
+            <br />
+            <span className="text-xs">请尝试扩大偏好范围或调整选科设置</span>
           </div>
         )}
         {activeTier.data.map((item) => (
-          <div key={`${item.school.id}-${item.major.major_name}`} className={`rounded-2xl p-4 shadow-sm sm:p-5 ${activeTier.color}`}>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-bold text-gray-800">{item.school.name}</h3>
-                  <span className="rounded-md bg-white/60 px-2 py-0.5 text-xs font-medium text-gray-500">{item.school.school_type}</span>
-                  <span className="text-xs text-gray-400">{item.school.city}</span>
-                </div>
-                {item.school.description && (() => {
-                  const tags = parseDescription(item.school.description);
-                  return tags.length > 0 ? (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {tags.slice(0, 4).map((t, i) => (
-                        <span key={i} className="rounded-md bg-white/40 px-1.5 py-0.5 text-xs text-gray-500">{t}</span>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-                <p className="mt-1 text-base font-semibold text-gray-700">{item.major.major_name}</p>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
-                  <span>🎯 录取位次：<strong className="text-gray-800">{item.major.avg_rank}</strong></span>
-                  <span>📊 平均分：<strong className="text-gray-800">{item.major.avg_score}</strong></span>
-                  <span>👥 招生：<strong className="text-gray-800">{item.major.enrollment_quota}人</strong></span>
-                  {item.major.tuition > 0 && <span>💰 <strong className="text-gray-800">¥{item.major.tuition}/年</strong></span>}
-                </div>
-              </div>
-              <div className="ml-3 flex flex-shrink-0 flex-col items-center">
-                <div
-                  className={`flex h-16 w-16 items-center justify-center rounded-full text-lg font-bold ${
-                    item.match_score >= 70 ? 'bg-green-500 text-white' : item.match_score >= 50 ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
-                  }`}
-                >
-                  {item.match_score}
-                </div>
-                <span className="mt-1 text-xs text-gray-400">匹配度</span>
-              </div>
-            </div>
-            <div className="mt-3 border-t border-white/40 pt-3">
-              <p className="text-xs text-gray-400">
-                位次差：{item.rank_diff > 0 ? `低${item.rank_diff}名（相对安全）` : `高${Math.abs(item.rank_diff)}名（需要冲刺）`}
-                &nbsp;·&nbsp;{item.major.subject_requirements && `选科要求：${item.major.subject_requirements}`}
-              </p>
-            </div>
-          </div>
+          <TierCard
+            key={`${item.school.id}-${item.major.major_name}`}
+            item={item}
+            tierColor={activeTier.color}
+            onCompare={toggleCompare}
+            compareIds={compareIds}
+          />
         ))}
       </div>
 
-      {/* ⚠️ 重要免责声明 */}
+      {/* P1-6: "查看更多"按钮（展开完整列表） */}
+      {activeTier.data.length >= 10 && (
+        <div className="mt-3 text-center">
+          <p className="text-xs text-gray-400">
+            以上为{activeTab === '冲' ? '冲刺' : activeTab === '稳' ? '稳妥' : '保底'}精选（共{activeTier.data.length}条），
+            建议至少填报{activeTab === '冲' ? '10-15' : activeTab === '稳' ? '15-20' : '8-10'}个志愿
+          </p>
+        </div>
+      )}
+
+      {/* 对比栏 */}
+      {compareIds.length >= 2 && (
+        <div className="mt-4 rounded-xl bg-blue-50 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-700">
+              📊 已选 {compareIds.length}/5 所学校进行对比
+            </span>
+            <Link
+              href={`/compare?ids=${compareIds.join(',')}`}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              开始对比 →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ⚠️ 重要免责声明（含数据时效性说明） */}
       <div className="mt-6 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
         <p className="font-semibold">⚠️ 重要声明</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>本工具数据来自历年公开录取信息，仅供参考，不构成录取承诺</li>
           <li>AI 分析基于历史数据推算，存在偏差，请理性对待</li>
+          <li>
+            <strong>数据时效性</strong>：各学校推荐使用的数据年份可能不同（{(() => {
+              const allYears = [...new Set([
+                ...recommendations.冲, ...recommendations.稳, ...recommendations.保
+              ].map(i => i.data_year).filter(Boolean))].sort((a, b) => (b || 0) - (a || 0));
+              return allYears.join('、');
+            })()}年），较旧数据可能无法反映最新录取趋势
+          </li>
           <li>
             志愿填报最终决策请以
             <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">云南省招生考试院(ynzs.cn)</a>
@@ -396,48 +464,17 @@ function ResultContent() {
         <p className="mt-2 text-xs text-amber-200">完全自愿，不影响使用任何功能</p>
       </div>
 
-      {/* AI 分析区域 —— 流式显示 */}
-      <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-gray-800">
-          🤖 AI 分析
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-600">仅供参考</span>
-        </h2>
-
-        {/* 流式输出中 */}
-        {loadingAi && (
-          <div className="mb-3 flex items-center gap-2 text-sm text-gray-400">
-            <svg className="h-4 w-4 animate-spin text-blue-500" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            AI 分析中...{aiAnalysis && ` (${aiAnalysis.length}字)`}
-          </div>
-        )}
-
-        {/* 流式文字（实时显示） */}
-        {aiAnalysis && (
-          <div className="prose prose-sm max-w-none text-gray-600 whitespace-pre-wrap leading-relaxed">
-            {aiAnalysis}
-          </div>
-        )}
-
-        {/* 失败 + 重试 */}
-        {!loadingAi && aiError && !aiAnalysis && (
-          <div className="text-center">
-            <p className="mb-3 text-sm text-gray-400">{aiError}</p>
-            <button
-              onClick={() => {
-                const params: Record<string, string> = {};
-                searchParams.forEach((v, k) => { params[k] = v; });
-                fetchAi(params);
-              }}
-              className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              🔄 重新获取 AI 分析
-            </button>
-          </div>
-        )}
-      </div>
+      {/* AI 分析区域 */}
+      <AIAnalysisPanel
+        analysis={aiAnalysis}
+        loading={loadingAi}
+        error={aiError}
+        onRetry={() => {
+          const params: Record<string, string> = {};
+          searchParams.forEach((v, k) => { params[k] = v; });
+          fetchAi(params);
+        }}
+      />
 
       {/* 底部操作 */}
       <div className="mt-6 flex gap-3">
@@ -457,159 +494,50 @@ function ResultContent() {
 
       {/* 分享弹窗 */}
       {showShare && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={() => setShowShare(false)}>
-          <div className="w-full max-w-lg rounded-t-3xl bg-white p-6 pb-10 animate-slide-up" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800">分享到</h3>
-              <button onClick={() => setShowShare(false)} className="text-xl text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <p className="mb-5 text-sm text-gray-400">推荐方案仅供交流参考，请以官方数据为准</p>
-
-            <div className="mb-4 flex gap-2">
-              <button onClick={() => { setShowShare(false); generatePoster(); }} className="flex-1 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 py-3.5 text-center text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] active:scale-95">
-                📸 生成图片
-              </button>
-              <button onClick={() => { setShowShare(false); generateVideoMedia(); }} className="flex-1 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 py-3.5 text-center text-sm font-semibold text-white shadow-md transition hover:scale-[1.02] active:scale-95">
-                🎬 生成视频
-              </button>
-            </div>
-
-            <div className="grid grid-cols-4 gap-4">
-              {[
-                { name: '微信好友', icon: '💬', color: 'bg-green-500', action: () => { copyText(buildShareText(recommendations, input) + '\n\n🔗 https://yunnan-gaokao.netlify.app', '微信'); } },
-                { name: '朋友圈', icon: '🟢', color: 'bg-green-600', action: () => { copyText(buildShareText(recommendations, input) + '\n\n🔗 yunnan-gaokao.netlify.app', '朋友圈'); } },
-                { name: 'QQ好友', icon: '🐧', color: 'bg-blue-500', action: () => { copyText(buildShareText(recommendations, input) + '\n\n🔗 https://yunnan-gaokao.netlify.app', 'QQ'); } },
-                { name: 'QQ空间', icon: '⭐', color: 'bg-yellow-500', action: () => { copyText(buildShareText(recommendations, input), 'QQ空间'); } },
-                { name: '微博', icon: '📢', color: 'bg-red-500', action: () => { copyText(buildShareText(recommendations, input) + '\n#高考志愿# #云南高考#', '微博'); } },
-                { name: '小红书', icon: '📕', color: 'bg-red-400', action: () => { copyText(buildShareText(recommendations, input) + '\n#高考志愿填报 #云南高考', '小红书'); } },
-                { name: '复制链接', icon: '🔗', color: 'bg-gray-500', action: () => { copyText('https://yunnan-gaokao.netlify.app', ''); } },
-                { name: '短信转发', icon: '📱', color: 'bg-indigo-500', action: () => { const t = buildShareText(recommendations, input); window.open(`sms:?body=${encodeURIComponent(t + '\nyunnan-gaokao.netlify.app')}`, '_blank'); } },
-              ].map((p) => (
-                <button key={p.name} onClick={p.action} className="flex flex-col items-center gap-1.5">
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${p.color} text-2xl shadow-md transition hover:scale-105 active:scale-95`}>{p.icon}</div>
-                  <span className="text-xs text-gray-500">{p.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <SharePanel
+          recommendations={recommendations}
+          input={input}
+          onClose={() => setShowShare(false)}
+          onGeneratePoster={() => { setShowShare(false); generatePoster(); }}
+          onGenerateVideo={() => { setShowShare(false); generateVideoMedia(); }}
+        />
       )}
 
       {/* 海报预览弹窗 */}
       {showPoster && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowPoster(false)}>
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800">📸 分享海报</h3>
-              <button onClick={() => setShowPoster(false)} className="text-xl text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            {loadingPoster && (
-              <div className="flex flex-col items-center justify-center py-12">
-                <svg className="mb-4 h-10 w-10 animate-spin text-purple-500" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <p className="font-medium text-gray-600">AI 正在生成海报...</p>
-                <p className="mt-1 text-sm text-gray-400">预计 5-10 秒</p>
-              </div>
-            )}
-            {!loadingPoster && posterError && (
-              <div className="py-8 text-center">
-                <p className="mb-4 text-red-500">{posterError}</p>
-                <button onClick={generatePoster} className="rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-medium text-white">🔄 重新生成</button>
-              </div>
-            )}
-            {!loadingPoster && posterUrl && (
-              <div>
-                <img src={posterUrl} alt="志愿推荐海报" className="w-full rounded-xl shadow-md" />
-                <p className="mt-1 text-center text-xs text-gray-400">⚠️ 图片由AI生成，仅供参考</p>
-                <div className="mt-3 flex gap-2">
-                  <button onClick={async () => {
-                    try { const blob = await (await fetch(posterUrl)).blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `高考志愿推荐_${result!.input.score}分.png`; a.click(); URL.revokeObjectURL(url); } catch { alert('下载失败，请长按图片保存'); }
-                  }} className="flex-1 rounded-xl bg-blue-600 py-3 text-center font-medium text-white">💾 保存图片</button>
-                  <button onClick={() => {
-                    if (navigator.share) { fetch(posterUrl).then(r => r.blob()).then(b => { navigator.share({ title: '高考志愿推荐方案', text: `${result!.input.score}分·第${result!.input.rank}名`, files: [new File([b], 'poster.png', { type: 'image/png' })] }).catch(() => {}); }); }
-                    else alert('请长按图片保存后分享');
-                  }} className="flex-1 rounded-xl bg-green-600 py-3 text-center font-medium text-white">📤 直接分享</button>
-                </div>
-                <p className="mt-2 text-center text-xs text-gray-400">💡 也可以长按图片保存到相册</p>
-              </div>
-            )}
-          </div>
-        </div>
+        <PosterModal
+          posterUrl={posterUrl}
+          loading={loadingPoster}
+          error={posterError}
+          score={input.score}
+          onClose={() => setShowPoster(false)}
+          onRetry={generatePoster}
+        />
       )}
 
       {/* 视频预览弹窗 */}
       {showVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowVideo(false)}>
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-800">🎬 分享视频</h3>
-              <button onClick={() => setShowVideo(false)} className="text-xl text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            {loadingVideo && (
-              <div className="flex flex-col items-center justify-center py-12">
-                <svg className="mb-4 h-10 w-10 animate-spin text-blue-500" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <p className="font-medium text-gray-600">AI 正在生成视频...</p>
-                <p className="mt-1 text-sm text-gray-400">视频生成约需30-90秒，请耐心等待</p>
-              </div>
-            )}
-            {!loadingVideo && videoError && (
-              <div className="py-8 text-center">
-                <p className="mb-4 text-red-500">{videoError}</p>
-                <button onClick={generateVideoMedia} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white">🔄 重新生成</button>
-              </div>
-            )}
-            {!loadingVideo && videoUrl && (
-              <div>
-                <video src={videoUrl} controls className="w-full rounded-xl shadow-md" poster="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='533'><rect fill='%233b82f6' width='300' height='533'/><text fill='white' x='150' y='260' text-anchor='middle' font-size='24'>🎬 高考志愿推荐</text></svg>" />
-                <p className="mt-1 text-center text-xs text-gray-400">⚠️ 视频由AI生成，仅供参考</p>
-                <div className="mt-3 flex gap-2">
-                  <button onClick={async () => {
-                    try { const blob = await (await fetch(videoUrl)).blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `志愿推荐_${result!.input.score}分.mp4`; a.click(); URL.revokeObjectURL(url); } catch { alert('下载失败，请重试'); }
-                  }} className="flex-1 rounded-xl bg-blue-600 py-3 text-center font-medium text-white">💾 保存视频</button>
-                  <button onClick={() => {
-                    if (navigator.share) { fetch(videoUrl).then(r => r.blob()).then(b => { navigator.share({ title: '高考志愿推荐方案', text: `${result!.input.score}分·第${result!.input.rank}名`, files: [new File([b], 'gaokao.mp4', { type: 'video/mp4' })] }).catch(() => {}); }); }
-                    else alert('请下载后分享');
-                  }} className="flex-1 rounded-xl bg-green-600 py-3 text-center font-medium text-white">📤 直接分享</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <VideoModal
+          videoUrl={videoUrl}
+          loading={loadingVideo}
+          error={videoError}
+          pollingStatus={pollingStatus}
+          score={input.score}
+          onClose={() => setShowVideo(false)}
+          onRetry={generateVideoMedia}
+        />
       )}
     </div>
   );
 }
 
-function copyText(text: string, target: string) {
-  navigator.clipboard.writeText(text).then(() => {
-    alert(target ? `已复制！打开${target} → 粘贴发送` : '链接已复制！');
-  });
-}
-
-function buildShareText(
-  recommendations: { 冲: RecommendationItem[]; 稳: RecommendationItem[]; 保: RecommendationItem[] },
-  input: { score: number; rank: number },
-): string {
-  return [
-    `📊 【${input.score}分·${input.rank}名】高考志愿推荐方案`,
-    '',
-    '🎯 冲刺：' + (recommendations.冲.slice(0, 3).map((i) => i.school.name).join('、') || '无'),
-    '✅ 稳妥：' + (recommendations.稳.slice(0, 3).map((i) => i.school.name).join('、') || '无'),
-    '🛡️ 保底：' + (recommendations.保.slice(0, 3).map((i) => i.school.name).join('、') || '无'),
-    '',
-    '⚠️ 仅供参考，请以 ynzs.cn 和 gaokao.chsi.com.cn 官方数据为准',
-    '—— 来自【高考志愿AI助手】：',
-  ].join('\n');
-}
-
 export default function ResultPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-[60vh] items-center justify-center"><p className="text-gray-400">加载中...</p></div>}>
+    <Suspense fallback={
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-gray-400">加载中...</p>
+      </div>
+    }>
       <ResultContent />
     </Suspense>
   );

@@ -3,14 +3,29 @@ import { buildRecommendations, generateHistoricalSummary } from '@/lib/recommend
 import { chatStream } from '@/lib/deepseek';
 import { fillPrompt, RECOMMENDATION_PROMPT } from '@/lib/prompts';
 import { analyzeScorePosition } from '@/lib/cutoff';
+import { checkRateLimit, getClientIP, RATE_LIMIT_CONFIG } from '@/lib/rate-limit';
 import type { UserInput } from '@/lib/types';
 
 /**
  * AI 分析 —— 流式 SSE 响应
- * 前端拿推荐数据后调用，文字边生成边显示
+ * 前端拿推荐结果后调用，文字边生成边显示
  */
 export async function POST(req: NextRequest) {
   try {
+    // 限流检查（AI调用较贵）
+    const ip = getClientIP(req);
+    const { allowed } = checkRateLimit(
+      `analyze:${ip}`,
+      RATE_LIMIT_CONFIG.analyze.max,
+      RATE_LIMIT_CONFIG.analyze.windowMs,
+    );
+    if (!allowed) {
+      return new Response(
+        JSON.stringify({ error: 'AI分析请求过于频繁，请稍后再试（每分钟10次）' }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
     const body = await req.json();
     const { score, rank, province, subject_group, subjects, cities, major_direction } = body;
 
@@ -38,9 +53,15 @@ export async function POST(req: NextRequest) {
     const { 冲, 稳, 保, allRecords } = buildRecommendations(input);
     const allItems = [...冲, ...稳, ...保];
 
-    // 历史摘要（进一步压缩：4校×3条）
+    // 历史摘要（进一步压缩：6校×5条）
     const historicalSummary = generateHistoricalSummary(allItems, allRecords);
     const position = analyzeScorePosition(input.score, input.subject_group);
+
+    // 数据年份信息
+    const dataYears = [...new Set(allItems.map(i => i.data_year).filter(Boolean))].sort((a, b) => (b || 0) - (a || 0));
+    const dataVintageInfo = dataYears.length > 0
+      ? `各学校数据来自${dataYears.join('、')}年（不同学校可能使用不同年份数据）`
+      : '数据来自2021-2025年';
 
     const prompt = fillPrompt(RECOMMENDATION_PROMPT, {
       score: String(input.score),
@@ -52,6 +73,7 @@ export async function POST(req: NextRequest) {
       major_direction: input.preferences.major_direction || '不限',
       cutoff_info: position.summary,
       historical_data: historicalSummary.slice(0, 3000),
+      data_vintage_info: dataVintageInfo,
     });
 
     // 流式输出 — 文字实时推到前端
@@ -72,7 +94,6 @@ export async function POST(req: NextRequest) {
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         } catch (e: any) {
-          // 流中断，发送已累积内容
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ error: e?.message || '分析中断' })}\n\n`),
           );

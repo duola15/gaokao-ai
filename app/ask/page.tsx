@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { ChatMessage } from '@/lib/types';
 
 const SUGGESTED_QUESTIONS = [
@@ -11,11 +12,32 @@ const SUGGESTED_QUESTIONS = [
   '财经类专业在云南有什么好学校？',
 ];
 
-export default function AskPage() {
+function AskContent() {
+  const searchParams = useSearchParams();
+
+  // 从URL获取考生上下文
+  const userContext = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const ctx: Record<string, string> = {};
+    if (searchParams.get('score')) ctx.score = searchParams.get('score')!;
+    if (searchParams.get('rank')) ctx.rank = searchParams.get('rank')!;
+    if (searchParams.get('province')) ctx.province = searchParams.get('province')!;
+    if (searchParams.get('subject_group')) ctx.subject_group = searchParams.get('subject_group')!;
+    if (searchParams.get('cities')) ctx.preferred_cities = searchParams.get('cities')!;
+    if (searchParams.get('major')) ctx.major_direction = searchParams.get('major')!;
+    userContext.current = ctx;
+  }, [searchParams]);
+
+  const contextSummary = userContext.current.score
+    ? `当前考生：${userContext.current.score}分·第${userContext.current.rank}名·${userContext.current.subject_group || ''}`
+    : '';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: '你好！我是高考志愿AI顾问。有什么想问的？你可以问我关于学校、专业、录取分数线、志愿策略等问题。\n\n⚠️ 我的回答仅供参考，请以官方发布信息为准。',
+      content: '你好！我是高考志愿AI顾问。有什么想问的？你可以问我关于学校、专业、录取分数线、志愿策略等问题。'
+        + (contextSummary ? `\n\n📋 ${contextSummary}\n我会结合你的分数和位次信息给出针对性建议。` : '')
+        + '\n\n⚠️ 我的回答仅供参考，请以官方发布信息为准。',
     },
   ]);
   const [input, setInput] = useState('');
@@ -38,7 +60,17 @@ export default function AskPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text }),
+        body: JSON.stringify({
+          question: text,
+          context: userContext.current.score ? {
+            score: Number(userContext.current.score),
+            rank: Number(userContext.current.rank),
+            province: userContext.current.province || 'yunnan',
+            subject_group: userContext.current.subject_group || '',
+            preferred_cities: userContext.current.preferred_cities?.split(',') || [],
+            major_direction: userContext.current.major_direction || '',
+          } : undefined,
+        }),
       });
       const data = await res.json();
       setMessages((prev) => [
@@ -140,5 +172,17 @@ export default function AskPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-gray-400">加载中...</p>
+      </div>
+    }>
+      <AskContent />
+    </Suspense>
   );
 }

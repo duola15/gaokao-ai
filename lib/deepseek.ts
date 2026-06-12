@@ -114,9 +114,10 @@ export async function chat(
       const client = getClient(baseURL, apiKey);
       const label = `[${provider}] ${model} key=${apiKey.slice(0, 10)}...`;
 
+      let timer: ReturnType<typeof setTimeout> | null = null;
       try {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS);
+        timer = setTimeout(() => ctrl.abort(), CALL_TIMEOUT_MS);
 
         const response = await client.chat.completions.create(
           { model, messages: messages as any, temperature, max_tokens: 2048 },
@@ -127,7 +128,7 @@ export async function chat(
         console.log(`[AI] ✅ ${label}`);
         return response.choices[0].message.content || '';
       } catch (err: any) {
-        clearTimeout(undefined);
+        if (timer) clearTimeout(timer);
         lastError = err;
         const status = err?.status || err?.response?.status || 0;
         const isTimeout = err?.name === 'AbortError' || err?.code === 'ETIMEDOUT';

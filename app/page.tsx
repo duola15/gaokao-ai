@@ -20,7 +20,7 @@ export default function Home() {
 
           <Link
             href="/recommend"
-            className="inline-block rounded-full bg-white px-10 py-4 text-lg font-bold text-blue-600 shadow-lg transition-all hover:scale-105 hover:scale-95 active:scale-95"
+            className="inline-block rounded-full bg-white px-10 py-4 text-lg font-bold text-blue-600 shadow-lg transition-all hover:scale-105 active:scale-95"
           >
             免费生成志愿方案 →
           </Link>

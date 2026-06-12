@@ -1,5 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: '高考志愿AI助手 - AI辅助分析 · 仅供参考',
@@ -32,14 +40,14 @@ export default function RootLayout({
               { href: '/compare', label: '对比', emoji: '📊' },
               { href: '/ask', label: '问答', emoji: '💬' },
             ].map((item) => (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 className="flex flex-col items-center gap-0.5 px-4 py-1.5 text-xs text-gray-500 hover:text-blue-600"
               >
                 <span className="text-lg">{item.emoji}</span>
                 <span>{item.label}</span>
-              </a>
+              </Link>
             ))}
           </div>
         </nav>

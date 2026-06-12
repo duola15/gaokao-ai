@@ -14,18 +14,27 @@ function SchoolDetailContent() {
   const [records, setRecords] = useState<AdmissionRecord[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!id) return;
 
+    setLoading(true);
+    setError('');
+
     fetch(`/api/school?id=${id}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(r.status === 404 ? '学校不存在' : `服务器错误(${r.status})`);
+        return r.json();
+      })
       .then((data) => {
         setSchool(data.school);
         setRecords(data.admissionRecords || []);
         setAiAnalysis(data.ai_analysis || '');
       })
-      .catch(() => {})
+      .catch((err: Error) => {
+        setError(err.message || '数据加载失败，请检查网络后重试');
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -33,6 +42,20 @@ function SchoolDetailContent() {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <p className="text-gray-400">加载中...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-20 text-center">
+        <p className="mb-3 text-red-500">⚠️ {error}</p>
+        <button onClick={() => window.location.reload()} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm text-white hover:bg-blue-700">
+          🔄 重新加载
+        </button>
+        <button onClick={() => router.back()} className="ml-2 mt-4 block w-full text-sm text-blue-600">
+          ← 返回
+        </button>
       </div>
     );
   }

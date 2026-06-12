@@ -1,5 +1,6 @@
-import { AdmissionRecord, RecommendationItem, RecommendationTier, School, UserInput } from './types';
+import { AdmissionRecord, RecommendationItem, RecommendationTier, RiskTag, TrendPoint, School, UserInput } from './types';
 import { getAllAdmissionRecords, allSchools } from './seed_data';
+import { getRiskLabels } from './risk-labels';
 
 /** 解析学校 description JSON 字符串为标签数组 */
 export function parseDescription(desc: string): string[] {
@@ -8,12 +9,66 @@ export function parseDescription(desc: string): string[] {
     const arr = JSON.parse(desc);
     return Array.isArray(arr) ? arr : [];
   } catch {
-    // 不是 JSON，尝试按逗号/换行分割
     return desc.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
   }
 }
 
+/** 年份衰减权重：越近年份权重越高 */
+function yearWeight(year: number): number {
+  const weights: Record<number, number> = {
+    2025: 1.00,
+    2024: 0.95, // 如果有2024数据
+    2023: 0.85,
+    2022: 0.70,
+    2021: 0.55,
+    2020: 0.40,
+    2019: 0.30,
+    2018: 0.20,
+    2017: 0.15,
+  };
+  return weights[year] || 0.10;
+}
+
 const RANK_TIER_THRESHOLD = 2000; // 位次差阈值
+
+/** 计算趋势方向和斜率 */
+function computeTrend(records: AdmissionRecord[], schoolId: number): {
+  trend: TrendPoint[];
+  direction: 'up' | 'down' | 'stable';
+} {
+  const schoolRecords = records
+    .filter(r => r.school_id === schoolId && r.avg_rank > 0)
+    .sort((a, b) => a.year - b.year);
+
+  // 取最新3个年份
+  const uniqueYears = [...new Set(schoolRecords.map(r => r.year))].sort((a, b) => b - a);
+  const recentYears = uniqueYears.slice(0, 3).reverse(); // 升序
+
+  const trend: TrendPoint[] = [];
+  for (const year of recentYears) {
+    const yearRecs = schoolRecords.filter(r => r.year === year);
+    if (yearRecs.length === 0) continue;
+    const avgRank = Math.round(yearRecs.reduce((s, r) => s + r.avg_rank, 0) / yearRecs.length);
+    const minScore = Math.min(...yearRecs.map(r => r.min_score));
+    trend.push({ year, min_score: minScore, avg_rank: avgRank });
+  }
+
+  if (trend.length < 2) return { trend, direction: 'stable' };
+
+  // 计算位次变化：负值 = 位次变小 = 变难(up)，正值 = 位次变大 = 变易(down)
+  const firstRank = trend[0].avg_rank;
+  const lastRank = trend[trend.length - 1].avg_rank;
+  const rankChange = firstRank - lastRank;
+
+  // 位次变化超过5%视为趋势
+  const threshold = firstRank * 0.05;
+  let direction: 'up' | 'down' | 'stable';
+  if (rankChange > threshold) direction = 'up';    // 录取位次上升(变难)
+  else if (rankChange < -threshold) direction = 'down'; // 录取位次下降(变易)
+  else direction = 'stable';
+
+  return { trend, direction };
+}
 
 export function buildRecommendations(input: UserInput): {
   冲: RecommendationItem[];
@@ -24,18 +79,27 @@ export function buildRecommendations(input: UserInput): {
   const allRecords = getAllAdmissionRecords();
 
   // 筛选：同省份 + 同选科类别
-  let candidateRecords = allRecords.filter(
+  const candidateRecords = allRecords.filter(
     (r) =>
       r.province_code === input.province &&
       r.subject_group === input.subject_group
   );
 
-  // 取每所学校最新年份的数据（避免用过期数据推荐）
+  // 按学校+年份分组，收集全部年份数据用于趋势分析
+  const schoolAllRecords = new Map<number, AdmissionRecord[]>();
+  for (const r of candidateRecords) {
+    const arr = schoolAllRecords.get(r.school_id) || [];
+    arr.push(r);
+    schoolAllRecords.set(r.school_id, arr);
+  }
+
+  // 取每所学校最新年份的数据（同时保留全部年份用于趋势分析）
   const schoolLatestYear = new Map<number, number>();
   for (const r of candidateRecords) {
     const cur = schoolLatestYear.get(r.school_id) || 0;
     if (r.year > cur) schoolLatestYear.set(r.school_id, r.year);
   }
+
   const matched = candidateRecords.filter(
     (r) => r.year === schoolLatestYear.get(r.school_id)
   );
@@ -46,20 +110,11 @@ export function buildRecommendations(input: UserInput): {
     const school = allSchools.find((s) => s.id === record.school_id);
     if (!school) continue;
 
-    // 计算位次差：学校平均录取位次 - 考生位次
+    // 计算位次差：学校录取位次 - 考生位次
     const rankDiff = record.avg_rank - input.rank;
 
     // 判定层级
     let tier: RecommendationTier;
-    if (rankDiff > RANK_TIER_THRESHOLD) {
-      tier = '稳'; // negative rankDiff means 学校录取位次更高（更难考），是冲刺
-      // Actually: positive rankDiff = 学校录取位次比考生位次大 = 考生位次更好 = 保底
-      // Let me reconsider:
-      // rankDiff = 学校avg_rank - 考生rank
-      // 如果 rankDiff > 0: 学校录取位次 > 考生位次 → 考生考得好，学校容易上 → 保底
-      // 如果 rankDiff < 0: 学校录取位次 < 考生位次 → 学校要求更高 → 冲刺
-    }
-
     if (rankDiff < -RANK_TIER_THRESHOLD) {
       tier = '冲';
     } else if (rankDiff >= -RANK_TIER_THRESHOLD && rankDiff <= RANK_TIER_THRESHOLD) {
@@ -68,19 +123,21 @@ export function buildRecommendations(input: UserInput): {
       tier = '保';
     }
 
-    // 计算匹配分 (0-100)
-    let matchScore = 50;
+    // 年份衰减权重
+    const yw = yearWeight(record.year);
+
+    // 基础匹配分
+    let matchScore = 50 * yw;
+
     // 位次越接近越高（对于稳的学校）
-    if (Math.abs(rankDiff) < 500) matchScore += 30;
-    else if (Math.abs(rankDiff) < 1000) matchScore += 20;
-    else if (Math.abs(rankDiff) < 2000) matchScore += 10;
+    if (Math.abs(rankDiff) < 500) matchScore += 30 * yw;
+    else if (Math.abs(rankDiff) < 1000) matchScore += 20 * yw;
+    else if (Math.abs(rankDiff) < 2000) matchScore += 10 * yw;
 
     // 专业方向匹配加分
     if (input.preferences.major_direction) {
       const dir = input.preferences.major_direction.toLowerCase();
-      if (
-        record.major_name.toLowerCase().includes(dir)
-      ) {
+      if (record.major_name.toLowerCase().includes(dir)) {
         matchScore += 15;
       }
     }
@@ -98,7 +155,34 @@ export function buildRecommendations(input: UserInput): {
       matchScore -= 50;
     }
 
-    matchScore = Math.max(0, Math.min(100, matchScore));
+    // ─── P3-18: 趋势分析加分 ───
+    const allSchoolRecs = schoolAllRecords.get(record.school_id) || [];
+    const { trend, direction } = computeTrend(allSchoolRecs, record.school_id);
+
+    if (tier === '冲' && direction === 'down') {
+      // 冲刺校 + 录取位次在下降 = 越来越容易 → 加5分（捡漏机会）
+      matchScore += 5;
+    } else if (tier === '冲' && direction === 'up') {
+      // 冲刺校 + 录取位次在上升 = 越来越难 → 减3分
+      matchScore -= 3;
+    } else if (tier === '保' && direction === 'up') {
+      // 保底校 + 录取位次在上升 = 越来越难 → 减5分（可能不再安全）
+      matchScore -= 5;
+    }
+
+    // ─── P2-11: 风险标签加分/减分 ───
+    const riskTags: RiskTag[] = getRiskLabels(record.major_name).map(rt => ({
+      type: rt.type,
+      label: rt.label,
+      description: rt.description,
+    }));
+
+    for (const tag of riskTags) {
+      if (tag.type === 'green') matchScore += 8;
+      else if (tag.type === 'red') matchScore -= 12;
+    }
+
+    matchScore = Math.max(0, Math.min(100, Math.round(matchScore)));
 
     results.push({
       school,
@@ -106,36 +190,40 @@ export function buildRecommendations(input: UserInput): {
       tier,
       rank_diff: rankDiff,
       match_score: matchScore,
+      risk_tags: riskTags.length > 0 ? riskTags : undefined,
+      trend: trend.length >= 2 ? trend : undefined,
+      trend_direction: direction,
+      data_year: record.year,
     });
   }
 
   // 分类汇总并按匹配分排序
+  // P1-6: 扩充推荐数量——冲15+稳20+保15（共50条，支持45个平行志愿）
   const 冲 = results
     .filter((r) => r.tier === '冲')
     .sort((a, b) => b.match_score - a.match_score)
-    .slice(0, 10);
+    .slice(0, 15);
 
   const 稳 = results
     .filter((r) => r.tier === '稳')
     .sort((a, b) => b.match_score - a.match_score)
-    .slice(0, 10);
+    .slice(0, 20);
 
   const 保 = results
     .filter((r) => r.tier === '保')
     .sort((a, b) => b.match_score - a.match_score)
-    .slice(0, 10);
+    .slice(0, 15);
 
   return { 冲, 稳, 保, allRecords };
 }
 
-/** 生成历史数据摘要文本供 AI 分析（严格控制长度） */
+/** 生成历史数据摘要文本供 AI 分析（含趋势和风险标签） */
 export function generateHistoricalSummary(
   items: RecommendationItem[],
   allRecords: AdmissionRecord[]
 ): string {
-  const topItems = items.slice(0, 8); // 最多8所学校
+  const topItems = items.slice(0, 8);
   const schoolIds = new Set(topItems.map((i) => i.school.id));
-  // 取近三年数据（最新可用年份）
   const availableYears = [...new Set(allRecords.map(r => r.year))].sort((a, b) => b - a);
   const recentYears = availableYears.slice(0, 3);
   const relevantRecords = allRecords.filter(
@@ -148,15 +236,17 @@ export function generateHistoricalSummary(
     const schoolRecords = relevantRecords
       .filter((r) => r.school_id === school.id)
       .sort((a, b) => b.year - a.year)
-      .slice(0, 5); // 每校最多5条
+      .slice(0, 5);
 
     if (schoolRecords.length === 0) continue;
 
     lines.push(`\n【${school.name}】${school.school_type}·${school.city}`);
     for (const r of schoolRecords) {
-      lines.push(`  ${r.year}年 ${r.major_name.slice(0,20)}：最低${r.min_score}分/位次${r.min_rank}`);
+      lines.push(`  ${r.year}年 ${r.major_name.slice(0, 20)}：最低${r.min_score}分/位次${r.min_rank}（权重${yearWeight(r.year).toFixed(2)}）`);
     }
   }
 
   return lines.join('\n') || '（暂无历史数据）';
 }
+
+export { yearWeight };

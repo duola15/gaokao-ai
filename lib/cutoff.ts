@@ -56,12 +56,19 @@ const YUNNAN_CUTOFF_HISTORY: CutoffRecord[] = [
   ...CUTOFF_2025.filter((r) => r.province === '云南'),
 ];
 
-/** 获取某省某年的批次线 */
+/** 获取某省某年的批次线（先查2025全量，再查云南历年） */
 export function getCutoff(
   province: string,
   year: number,
 ): CutoffRecord | undefined {
-  return CUTOFF_2025.find((r) => r.province === province && r.year === year);
+  // 先查2025年全量数据
+  const from2025 = CUTOFF_2025.find((r) => r.province === province && r.year === year);
+  if (from2025) return from2025;
+  // 再查云南历年数据
+  if (province === '云南') {
+    return YUNNAN_CUTOFF_HISTORY.find((r) => r.year === year);
+  }
+  return undefined;
 }
 
 /** 获取云南省的批次线 */

@@ -1,17 +1,36 @@
 'use client';
 
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { allSchools, getAllAdmissionRecords } from '@/lib/seed_data';
 import type { AdmissionRecord } from '@/lib/types';
 
 const FILTER_TYPES = ['全部', '985', '211', '双一流', '综合类', '理工类', '师范类', '医药类', '财经类', '农林类', '政法类', '艺术类', '体育类'];
 
-export default function ComparePage() {
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+function CompareContent() {
+  const searchParams = useSearchParams();
+
+  // 从URL参数预选学校（来自结果页的"开始对比"链接）
+  const [selectedIds, setSelectedIds] = useState<number[]>(() => {
+    const ids = searchParams.get('ids');
+    if (ids) {
+      return ids.split(',').map(Number).filter(id => !isNaN(id)).slice(0, 5);
+    }
+    return [];
+  });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('全部');
   const [subjectFilter, setSubjectFilter] = useState<'全部' | '理工类' | '文史类'>('全部');
   const compareRef = useRef<HTMLDivElement>(null);
+
+  // 预选时自动滚动到对比表格
+  useEffect(() => {
+    if (selectedIds.length >= 2) {
+      setTimeout(() => {
+        compareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 500);
+    }
+  }, []); // 仅在首次加载时触发
 
   const jumpToCompare = useCallback(() => {
     compareRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -63,9 +82,19 @@ export default function ComparePage() {
     return list;
   }, [search, typeFilter, subjectFilter, schoolStats]);
 
+  const [limitWarn, setLimitWarn] = useState(false);
+
   const toggleSchool = (id: number) => {
-    if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(sid => sid !== id));
-    else if (selectedIds.length < 5) setSelectedIds([...selectedIds, id]);
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(sid => sid !== id));
+      setLimitWarn(false);
+    } else if (selectedIds.length < 5) {
+      setSelectedIds([...selectedIds, id]);
+      setLimitWarn(false);
+    } else {
+      setLimitWarn(true);
+      setTimeout(() => setLimitWarn(false), 2000);
+    }
   };
 
   const selectedSchools = allSchools.filter(s => selectedIds.includes(s.id));
@@ -133,6 +162,11 @@ export default function ComparePage() {
               <button onClick={() => toggleSchool(s.id)} className="ml-0.5 font-bold hover:text-red-200">×</button>
             </span>
           ))}
+          {limitWarn && (
+            <span className="ml-auto rounded-lg bg-red-100 px-3 py-1 text-xs font-medium text-red-600 animate-pulse">
+              最多选择5所
+            </span>
+          )}
           {selectedIds.length >= 2 && (
             <button onClick={jumpToCompare}
               className="ml-auto rounded-lg bg-blue-700 px-4 py-1.5 text-xs font-bold text-white hover:bg-blue-800">
@@ -346,5 +380,17 @@ export default function ComparePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ComparePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-gray-400">加载中...</p>
+      </div>
+    }>
+      <CompareContent />
+    </Suspense>
   );
 }
