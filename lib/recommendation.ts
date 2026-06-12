@@ -29,7 +29,22 @@ function yearWeight(year: number): number {
   return weights[year] || 0.10;
 }
 
-const RANK_TIER_THRESHOLD = 2000; // 位次差阈值
+/**
+ * 动态位次差阈值
+ * 对于高位次（顶尖考生），名校之间位次差很小但竞争激烈，需缩小阈值
+ * 对于低位次（普通考生），位次差较大，保持2000阈值
+ *
+ * 公式：threshold = min(2000, max(300, rank × 0.5))
+ *
+ * 示例：
+ *   位次100  → 阈值300   (只需差300名即可冲刺）
+ *   位次800  → 阈值400   (清华100 vs 考生800 → rankDiff=-700 < -400 → 冲)
+ *   位次5000 → 阈值2000  (恢复默认)
+ *   位次40000→ 阈值2000  (保持默认)
+ */
+function getDynamicTierThreshold(rank: number): number {
+  return Math.min(2000, Math.max(300, Math.round(rank * 0.5)));
+}
 
 /** 计算趋势方向和斜率 */
 function computeTrend(records: AdmissionRecord[], schoolId: number): {
@@ -113,11 +128,12 @@ export function buildRecommendations(input: UserInput): {
     // 计算位次差：学校录取位次 - 考生位次
     const rankDiff = record.avg_rank - input.rank;
 
-    // 判定层级
+    // 判定层级（动态阈值：高位次缩小，低位次保持2000）
+    const threshold = getDynamicTierThreshold(input.rank);
     let tier: RecommendationTier;
-    if (rankDiff < -RANK_TIER_THRESHOLD) {
+    if (rankDiff < -threshold) {
       tier = '冲';
-    } else if (rankDiff >= -RANK_TIER_THRESHOLD && rankDiff <= RANK_TIER_THRESHOLD) {
+    } else if (rankDiff >= -threshold && rankDiff <= threshold) {
       tier = '稳';
     } else {
       tier = '保';

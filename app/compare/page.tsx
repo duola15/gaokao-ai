@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useCallback, useEffect, Suspense } from 'rea
 import { useSearchParams } from 'next/navigation';
 import { allSchools, getAllAdmissionRecords } from '@/lib/seed_data';
 import type { AdmissionRecord } from '@/lib/types';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 const FILTER_TYPES = ['全部', '985', '211', '双一流', '综合类', '理工类', '师范类', '医药类', '财经类', '农林类', '政法类', '艺术类', '体育类'];
 
@@ -366,16 +367,9 @@ function CompareContent() {
             </table>
           </div>
 
-          {/* 表格底部提示 */}
-          <div className="border-t bg-amber-50 px-5 py-3">
-            <p className="text-xs text-amber-700">
-              ⚠️ 以上数据来自历年公开录取信息，仅供参考。不同年份分数不可直接比较，请以位次为主要参考。
-              最终填报请以{' '}
-              <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="font-semibold underline">云南省招生考试院</a>
-              {' '}和{' '}
-              <a href="https://gaokao.chsi.com.cn" target="_blank" rel="noopener noreferrer" className="font-semibold underline">阳光高考网</a>
-              {' '}官方发布为准。
-            </p>
+          {/* 表格底部法律声明 */}
+          <div className="border-t px-5 py-3">
+            <LegalDisclaimer variant="banner" />
           </div>
         </div>
       )}

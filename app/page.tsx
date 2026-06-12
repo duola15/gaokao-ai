@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 export default function Home() {
   return (
@@ -31,22 +32,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ⚠️ 免责声明（置顶） */}
-      <section className="mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 text-sm text-amber-800">
-        <p className="mb-2 font-semibold">⚠️ 重要声明</p>
-        <ul className="list-inside list-disc space-y-1">
-          <li>本工具为免费公益项目，数据来自历年公开录取信息整理，<strong>仅供参考</strong></li>
-          <li>AI 分析基于历史数据推算，存在偏差，<strong>不构成志愿填报建议或录取承诺</strong></li>
-          <li>
-            最终志愿填报请以{' '}
-            <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">云南省招生考试院(ynzs.cn)</a>
-            {' '}和{' '}
-            <a href="https://gaokao.chsi.com.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">阳光高考网(gaokao.chsi.com.cn)</a>
-            {' '}官方发布为准
-          </li>
-          <li>建议将推荐结果与学校招生章程、班主任/老师建议交叉验证</li>
-        </ul>
-      </section>
+      {/* ⚠️ 免责声明（首页置顶，确保所有访问者首先看到） */}
+      <LegalDisclaimer variant="compact" className="mb-8" dataYears={[2021, 2022, 2023, 2025]} extraNotes={[
+        '首次使用？建议先查看下方"数据来源与声明"板块了解更多',
+      ]} />
 
       {/* 三大核心价值 */}
       <section className="mb-12">
@@ -118,8 +107,9 @@ export default function Home() {
           <span>🏫 覆盖2,200+全国高校</span>
         </div>
         <p className="text-sm text-gray-400">
-          数据从公开渠道收集整理，无法保证100%完整准确。请以官方最新发布为准。
-          本工具不收集用户隐私，不收费，不构成任何形式的录取承诺。
+          数据从公开渠道收集整理，<strong>无法保证100%完整准确</strong>。请以官方最新发布为准。
+          本工具为免费公益项目，<strong>不收集</strong>用户隐私，<strong>不收费</strong>，<strong>不构成</strong>任何形式的合同要约或录取承诺。
+          用户<strong>自行承担</strong>填报风险。
         </p>
       </section>
 

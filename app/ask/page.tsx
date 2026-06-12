@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { ChatMessage } from '@/lib/types';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 const SUGGESTED_QUESTIONS = [
   '云南大学的计算机专业怎么样？',
@@ -147,6 +148,9 @@ function AskContent() {
           </div>
         </div>
       )}
+
+      {/* AI问答法律声明 */}
+      <LegalDisclaimer variant="banner" className="mt-4" />
 
       {/* 输入框 */}
       <div className="sticky bottom-4 mt-4 flex gap-2 rounded-2xl bg-white p-3 shadow-lg">

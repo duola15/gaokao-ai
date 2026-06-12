@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TOP_CITIES, MORE_CITIES } from '@/lib/city_data';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 export default function RecommendPage() {
   const router = useRouter();
@@ -236,6 +237,9 @@ export default function RecommendPage() {
             ))}
           </div>
         </div>
+
+        {/* 法律声明 */}
+        <LegalDisclaimer variant="banner" />
 
         {/* 提交 */}
         <button type="submit" disabled={!isFormValid || loading}

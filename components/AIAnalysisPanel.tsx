@@ -12,7 +12,7 @@ export default function AIAnalysisPanel({ analysis, loading, error, onRetry }: A
     <div className="mt-6 rounded-2xl bg-white p-5 shadow-sm sm:p-6">
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-gray-800">
         🤖 AI 分析
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-600">仅供参考</span>
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-600">仅供参考，不构成建议</span>
       </h2>
 
       {/* 流式输出中 */}

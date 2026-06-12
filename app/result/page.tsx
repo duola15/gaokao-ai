@@ -9,6 +9,7 @@ import SharePanel from '@/components/SharePanel';
 import PosterModal from '@/components/PosterModal';
 import VideoModal from '@/components/VideoModal';
 import AIAnalysisPanel from '@/components/AIAnalysisPanel';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 interface ResultData {
   input: {
@@ -385,10 +386,20 @@ function ResultContent() {
       {/* 推荐卡片 */}
       <div className="space-y-3">
         {activeTier.data.length === 0 && (
-          <div className="rounded-2xl bg-white p-8 text-center text-gray-400">
-            暂无{activeTab === '冲' ? '冲刺' : activeTab === '稳' ? '稳妥' : '保底'}推荐
-            <br />
-            <span className="text-xs">请尝试扩大偏好范围或调整选科设置</span>
+          <div className="rounded-2xl bg-white p-8 text-center">
+            {activeTab === '冲' && input.rank < 500 ? (
+              <>
+                <p className="text-gray-700 font-semibold">🎉 你的位次已非常靠前</p>
+                <p className="mt-1 text-sm text-gray-400">
+                  全省前{input.rank}名，所有学校都在稳妥/保底范围，无需冲刺。查看下方"稳"和"保"推荐即可。
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-400">暂无{activeTab === '冲' ? '冲刺' : activeTab === '稳' ? '稳妥' : '保底'}推荐</p>
+                <p className="mt-1 text-xs text-gray-400">请尝试扩大偏好范围或调整选科设置</p>
+              </>
+            )}
           </div>
         )}
         {activeTier.data.map((item) => (
@@ -429,39 +440,34 @@ function ResultContent() {
         </div>
       )}
 
-      {/* ⚠️ 重要免责声明（含数据时效性说明） */}
-      <div className="mt-6 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
-        <p className="font-semibold">⚠️ 重要声明</p>
-        <ul className="mt-2 list-inside list-disc space-y-1">
-          <li>本工具数据来自历年公开录取信息，仅供参考，不构成录取承诺</li>
-          <li>AI 分析基于历史数据推算，存在偏差，请理性对待</li>
-          <li>
-            <strong>数据时效性</strong>：各学校推荐使用的数据年份可能不同（{(() => {
-              const allYears = [...new Set([
-                ...recommendations.冲, ...recommendations.稳, ...recommendations.保
-              ].map(i => i.data_year).filter(Boolean))].sort((a, b) => (b || 0) - (a || 0));
-              return allYears.join('、');
-            })()}年），较旧数据可能无法反映最新录取趋势
-          </li>
-          <li>
-            志愿填报最终决策请以
-            <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">云南省招生考试院(ynzs.cn)</a>
-            {' '}和{' '}
-            <a href="https://gaokao.chsi.com.cn" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 underline">阳光高考网</a>
-            {' '}官方发布为准
-          </li>
-          <li>建议将推荐结果与学校招生章程、老师建议交叉验证</li>
-        </ul>
-      </div>
+      {/* ⚠️ 法律声明（含数据时效性说明） */}
+      <LegalDisclaimer
+        variant="compact"
+        className="mt-6"
+        dataYears={((): number[] => {
+          const allYears = [...new Set([
+            ...recommendations.冲, ...recommendations.稳, ...recommendations.保
+          ].map(i => i.data_year).filter(Boolean))] as number[];
+          return allYears.sort((a, b) => (b || 0) - (a || 0));
+        })()}
+        extraNotes={[
+          'AI分析基于历史数据推算，存在偏差，请理性对待',
+          '建议将推荐结果与学校招生章程、班主任/老师建议交叉验证',
+        ]}
+      />
 
-      {/* 支持作者 */}
+      {/* 支持作者（纯自愿，不影响任何功能） */}
       <div className="mt-6 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 p-6 text-center text-white shadow-lg">
         <p className="text-lg font-bold">☕ 觉得有用？请作者喝杯咖啡</p>
-        <p className="mt-2 text-sm text-amber-100">这个工具完全免费，数据来源公开可查。如果帮到了你，欢迎支持一下</p>
+        <p className="mt-2 text-sm text-amber-100">
+          本工具<strong>永久免费</strong>，无付费墙。如果帮到了你，欢迎纯自愿支持
+        </p>
         <a href="https://afdian.com/a/gaokao-ai" target="_blank" rel="noopener noreferrer" className="mt-4 inline-block rounded-full bg-white px-8 py-3 font-bold text-orange-600 shadow-md transition hover:scale-105 active:scale-95">
           去爱发电支持 →
         </a>
-        <p className="mt-2 text-xs text-amber-200">完全自愿，不影响使用任何功能</p>
+        <p className="mt-2 text-xs text-amber-200">
+          ⚠️ 支持完全自愿，不影响使用任何功能，不构成付费服务关系
+        </p>
       </div>
 
       {/* AI 分析区域 */}

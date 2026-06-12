@@ -85,7 +85,6 @@ export const RED_MAJORS: RiskLabel[] = [
     keywords: [
       '历史学', '考古学',
       '音乐表演', '音乐学', '绘画', '美术学', '雕塑',
-      '法学', // 法学在红牌和绿牌中都有，取决于层次。双一流法学绿，普通院校法学红
       '应用心理学', '心理学',
       '化学', '应用化学',
       '生物技术', '生物工程',
@@ -107,21 +106,36 @@ const ALL_LABELS: RiskLabel[] = [...GREEN_MAJORS, ...YELLOW_MAJORS, ...RED_MAJOR
  */
 export function getRiskLabels(majorName: string): RiskLabel[] {
   const matched: RiskLabel[] = [];
+  const matchedKeywords = new Map<string, 'green' | 'yellow' | 'red'>(); // keyword → best type
 
+  // 第一遍：记录每个关键词的最佳类型（绿>黄>红）
   for (const label of ALL_LABELS) {
     for (const kw of label.keywords) {
       if (majorName.includes(kw)) {
-        // 避免重复匹配
+        const existing = matchedKeywords.get(kw);
+        const typeOrder = { green: 0, yellow: 1, red: 2 };
+        if (!existing || typeOrder[label.type] < typeOrder[existing]) {
+          matchedKeywords.set(kw, label.type);
+        }
+        break;
+      }
+    }
+  }
+
+  // 第二遍：收集匹配的标签（去重，同一label不重复添加）
+  for (const label of ALL_LABELS) {
+    for (const kw of label.keywords) {
+      if (majorName.includes(kw) && matchedKeywords.get(kw) === label.type) {
         if (!matched.some((m) => m.label === label.label)) {
           matched.push(label);
         }
-        break; // 该标签已匹配，跳到下一个标签
+        break;
       }
     }
   }
 
   // 按优先级排序：绿 > 黄 > 红
-  const typeOrder = { green: 0, yellow: 1, red: 2 };
+  const typeOrder: Record<string, number> = { green: 0, yellow: 1, red: 2 };
   matched.sort((a, b) => typeOrder[a.type] - typeOrder[b.type]);
 
   return matched.slice(0, 2);

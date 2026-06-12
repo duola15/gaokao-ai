@@ -54,24 +54,22 @@ export default function RootLayout({
 
         <footer className="mt-16 border-t bg-white py-6 text-center text-sm text-gray-500">
           <p className="font-semibold text-gray-700">⚠️ 免责声明</p>
-          <p className="mt-1">
-            本工具数据来自历年公开录取信息（云南省招生考试院、阳光高考网等），
-            <strong>所有分析结果仅供参考，不构成志愿填报建议或录取承诺</strong>。
-          </p>
-          <p className="mt-1">
-            志愿填报最终决策请以{' '}
+          <p className="mt-1 mx-auto max-w-2xl">
+            本工具为<strong>免费公益项目</strong>，数据来自历年公开录取信息，
+            <strong>所有分析结果仅供参考，不构成合同要约、录取承诺或志愿填报建议</strong>。
+            最终决策请以{' '}
             <a href="https://www.ynzs.cn" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">云南省招生考试院(ynzs.cn)</a>
             {' '}和{' '}
             <a href="https://gaokao.chsi.com.cn" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">阳光高考网(gaokao.chsi.com.cn)</a>
-            {' '}官方发布为准。
+            {' '}官方发布为准。<strong>用户自行承担</strong>使用本工具的全部风险。
           </p>
           <p className="mt-3">
-            ☕ <a href="https://afdian.com/a/gaokao-ai" target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:underline">爱发电支持作者</a>
+            ☕ <a href="https://afdian.com/a/gaokao-ai" target="_blank" rel="noopener noreferrer" className="text-amber-600 hover:underline">爱发电支持作者（完全自愿）</a>
             {' · '}
             <a href="https://github.com/duola15/gaokao-ai" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600">GitHub 开源</a>
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            本工具免费开放使用，不收集个人信息，无付费墙
+            免费使用 · 不收集个人信息 · 无付费墙 · 受中华人民共和国法律管辖
           </p>
         </footer>
       </body>

@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import type { School, AdmissionRecord } from '@/lib/types';
 import { parseDescription } from '@/lib/recommendation';
+import LegalDisclaimer from '@/components/LegalDisclaimer';
 
 function SchoolDetailContent() {
   const searchParams = useSearchParams();
@@ -164,6 +165,9 @@ function SchoolDetailContent() {
           </div>
         </div>
       )}
+
+      {/* 法律声明 */}
+      <LegalDisclaimer variant="banner" className="mb-6" />
 
       {/* 操作 */}
       <button
